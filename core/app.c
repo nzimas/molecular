@@ -10,8 +10,9 @@
  *                       (the side buttons act at their release, or at 0.8 s held; both held: neither, as both
  *                       held 3 s hand over to update mode)
  *   in the menu         one item at a time, SETTINGS, PATCHES, POWER; turn: the next; press: do it; held: back
- *                       SETTINGS: the patch's own, MOTION RATE (events a minute); turn: the value; press, held
- *                       or a side button: back
+ *                       SETTINGS: the patch's own, a page each: MOTION RATE (events a minute), MIX (the effects'
+ *                       share, 0 .. 100 %, 5 a detent); turn: the value; press: the next page (after the last,
+ *                       back); held or a side button: back
  *                       PATCHES: the slots, four a row, numbered; turn: choose; press: the patch there loaded;
  *                       held: the molecule saved there (a filled slot written over); a side button: back
  *                       POWER: POWER OFF?  NO / YES (NO first); turn: choose; press: do it
@@ -27,6 +28,7 @@
 
 enum { SC_ASLEEP, SC_WAKE, SC_MOL, SC_MENU, SC_SLOTS, SC_CONFIRM, SC_OFF, SC_SETTINGS };
 enum { MI_SETTINGS, MI_PATCHES, MI_POWER, MI_N };
+enum { SET_MOTION, SET_MIX, SET_N };     /* SETTINGS' pages */
 enum { OV_NONE, OV_TEXT, OV_VOL };
 
 /* the kinds' colours by family, bright behind black letters: the generator yellow; filters and formants cyan;
@@ -43,6 +45,8 @@ static const uint16_t AT_COLOUR[AT_N] = {
     C_GEN, C_FLT, C_DRV, C_DRV, C_MOD, C_RES, C_RES, C_FLT, C_TIM, C_TIM, C_SPC,       /* FM FILTER .. SPRING */
     C_TIM, C_TIM, C_DRV, C_MOD, C_DRV, C_DRV, C_RES, C_TIM, C_TIM, C_DRV, C_DRV,       /* GLITCH .. XOR */
     C_DRV, C_DRV, C_MOD, C_MOD, C_SPC, C_SPC,                                          /* DUST .. REVERB */
+    C_TIM, C_FLT, C_DRV, C_FLT, C_MOD, C_RES, C_TIM, C_TIM,                            /* SPIRAL .. DISINTEGRATE */
+    C_RES, C_FLT, C_MOD, C_DRV, C_FLT, C_TIM, C_SPC, C_DRV, C_DRV, C_MOD, C_FLT,       /* REED .. SQUELCH */
 };
 
 static struct {
@@ -59,6 +63,7 @@ static struct {
     int want_family;             /* show the patch's family once the new molecule is drawn */
     int item;                    /* the menu's: MI_* */
     int32_t slot;                /* PATCHES: the chosen slot */
+    int32_t page;                /* SETTINGS: SET_* */
     uint32_t used;               /* .. and those that hold a patch, a bit each */
     int side_down[2];            /* the left, the right button held */
     int side_fired[2];           /* .. and its long press already acted */
@@ -75,9 +80,30 @@ static void app_overlay(int kind, const char *text, uint32_t now)
 }
 static void app_set_volume(void) { mol_volume(app.vol * app.vol * Q15 / 10000); }   /* (a square: felt evenly) */
 
+/* 0.64: a new molecule unlike the last three: of another family, and, half the time, of another kind (held FM,
+ * struck FM, physical) than the last (six tries at most; the research's anti-repetition) */
 static void app_new_molecule(void)
 {
-    mol_new(rnd_next(&app.r));
+    static uint32_t last[3] = {0xFFu, 0xFFu, 0xFFu};
+    uint32_t seed = 0, f = 0, t, i, kind_last = fam_is_pm(last[0]) ? 2u : fam_is_struck(last[0]) ? 1u : 0u;
+    int want_other = rnd_chance(&app.r, 50);
+    for (t = 0; t < 6u; t++) {
+        uint32_t kind;
+        int ok = 1;
+        seed = rnd_next(&app.r);
+        f = gen_family_of(seed);
+        kind = fam_is_pm(f) ? 2u : fam_is_struck(f) ? 1u : 0u;
+        for (i = 0; i < 3u; i++)
+            ok &= f != last[i];
+        if (want_other && last[0] != 0xFFu && kind == kind_last)
+            ok = 0;
+        if (ok)
+            break;
+    }
+    last[2] = last[1];
+    last[1] = last[0];
+    last[0] = f;
+    mol_new(seed);
     app.want_family = 1;
     app.ov = OV_NONE;
 }
@@ -175,8 +201,12 @@ static void app_turn(int32_t d, uint32_t now)
         app.item = clampi(app.item + d, 0, MI_N - 1);
     else if (app.screen == SC_SLOTS)
         app.slot = clampi(app.slot + d, 0, (int32_t)PATCH_SLOTS - 1);
-    else if (app.screen == SC_SETTINGS)
-        motion_rate_step(d);
+    else if (app.screen == SC_SETTINGS) {
+        if (app.page == SET_MOTION)
+            motion_rate_step(d);
+        else                                         /* MIX: 5 % a detent */
+            mol_d.mix = (uint8_t)(clampi((int32_t)mol_mix() + 5 * d, 0, 100) + 1);
+    }
     else if ((app.screen == SC_CONFIRM || app.screen == SC_WAKE) && d) {
         app.yes = d > 0;
         app.wake_at = now;                           /* (a choice being made: no timeout yet) */
@@ -207,8 +237,10 @@ static void app_release(uint32_t now)
         app_new_molecule();
         break;
     case SC_MENU:
-        if (app.item == MI_SETTINGS)
+        if (app.item == MI_SETTINGS) {
             app.screen = SC_SETTINGS;
+            app.page = SET_MOTION;
+        }
         else if (app.item == MI_PATCHES) {
             app.used = patch_used_mask();
             app.slot = 0;
@@ -218,8 +250,9 @@ static void app_release(uint32_t now)
             app.yes = 0;
         }
         break;
-    case SC_SETTINGS:
-        app.screen = SC_MOL;
+    case SC_SETTINGS:                                /* the next page; after the last, back */
+        if (++app.page >= SET_N)
+            app.screen = SC_MOL;
         break;
     case SC_SLOTS:                                   /* a short press: the patch there, or EMPTY (stay) */
         if (patch_load((uint32_t)app.slot)) {
@@ -408,14 +441,29 @@ static void draw_slots(void)
     }
 }
 
-/* SETTINGS: the patch's MOTION RATE, its events a minute large; the turn's way shown by the arrows either side */
+/* SETTINGS: one of the patch's settings a page, its value large, the turn's way shown by the arrows either side, the
+ * dots below: which page. MOTION RATE (events a minute), MIX (the effects' share, %) */
 static void draw_settings(void)
 {
+    static const char *const TITLE[SET_N] = {"MOTION RATE", "MIX"};
+    static const char *const UNIT[SET_N] = {"A MINUTE", "% WET"};
     char num[4];
-    uint32_t v = motion_rate(), k = 0, i = motion_rate_index();
+    uint32_t v, k = 0;
+    int lower, higher;
+    int32_t j;
+    if (app.page == SET_MOTION) {
+        uint32_t i = motion_rate_index();
+        v = motion_rate();
+        lower = i > 0;
+        higher = i + 1u < MOTION_NRATES;
+    } else {
+        v = mol_mix();
+        lower = v > 0;
+        higher = v < 100u;
+    }
     gfx_clear(C_BLACK);
     gfx_frame(6, 4, SCR_W - 12, SCR_H - 8, 4, C_MOD);
-    gfx_text_c(SCR_W / 2, 12, "MOTION RATE", gfx_fit("MOTION RATE", SCR_W - 28, 2), C_WHITE);
+    gfx_text_c(SCR_W / 2, 12, TITLE[app.page], gfx_fit(TITLE[app.page], SCR_W - 28, 2), C_WHITE);
     if (v >= 100u)
         num[k++] = (char)('0' + v / 100u);
     if (v >= 10u)
@@ -424,15 +472,22 @@ static void draw_settings(void)
     num[k] = 0;
     {
         int32_t sc = gfx_fit(num, SCR_W - 76, 6);    /* (clear of the arrows) */
-        gfx_text_c(SCR_W / 2, 59 - 7 * sc / 2, num, sc, C_WHITE);
+        gfx_text_c(SCR_W / 2, 55 - 7 * sc / 2, num, sc, C_WHITE);
     }
-    if (i > 0)                                       /* a lower rate to turn to: an arrow left */
+    if (lower)                                       /* a lower value to turn to: an arrow left */
         for (k = 0; k < 12u; k++)
-            gfx_rect(20 + (int32_t)k, 59 - (int32_t)k, 2, 2 * (int32_t)k + 2, C_WHITE);
-    if (i + 1u < MOTION_NRATES)
+            gfx_rect(20 + (int32_t)k, 55 - (int32_t)k, 2, 2 * (int32_t)k + 2, C_WHITE);
+    if (higher)
         for (k = 0; k < 12u; k++)
-            gfx_rect(SCR_W - 22 - (int32_t)k, 59 - (int32_t)k, 2, 2 * (int32_t)k + 2, C_WHITE);
-    gfx_text_c(SCR_W / 2, 94, "A MINUTE", 2, C_WHITE);
+            gfx_rect(SCR_W - 22 - (int32_t)k, 55 - (int32_t)k, 2, 2 * (int32_t)k + 2, C_WHITE);
+    gfx_text_c(SCR_W / 2, 84, UNIT[app.page], 2, C_WHITE);
+    for (j = 0; j < SET_N; j++) {                    /* which page */
+        int32_t x = SCR_W / 2 + (j * 2 - (SET_N - 1)) * 11;
+        if (j == app.page)
+            gfx_disc(x, 110, 6, C_WHITE);
+        else
+            gfx_ring(x, 110, 4, 6, 0, C_WHITE);
+    }
 }
 
 /* a choice: the chosen one filled, the other outlined; both white, so both read */

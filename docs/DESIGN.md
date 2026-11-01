@@ -32,7 +32,7 @@ Bigorna's 4-op (`fmt.c`) stays the fallback if the port shows the 6-op too costl
 from a few interval sets). A held family's chord sounds for as long as the molecule lives (`fm_hold`: the carriers
 sustained), each voice swelling in over a few seconds; a struck family's notes are struck on a clock.
 
-**The families** (0.55, `core/families.c`): 40, by weight:
+**The families** (build 55, `core/families.c`): 40, by weight:
 - Tonitor's 19 gentle families on its AMBIENT path, as before (about 37 % of molecules);
 - Tonitor's harsher five on its open path, no longer softened: BRUIT, FRICTION, SHARDS, STATIC, GLITCH (9 %);
 - eight held ones after Norilsk (24 %): HUM (carriers nailed to 46 .. 63 Hz and 100 .. 158 Hz under bell partials),
@@ -45,7 +45,7 @@ Norilsk's waves, grains and resonant bodies are not in this engine: its families
 PULSAR, FREEZE, the found sounds ..) are left out; the others stand in operators for them (a body's modes as carriers
 on its ratios, noise as an operator fed back hard, a square as a modulator at twice the carrier).
 
-**The clocks** (0.55, `gen.c`, after Norilsk's `mo_strikes`): each strike takes the next voice and a note of the chord,
+**The clocks** (build 55, `gen.c`, after Norilsk's `mo_strikes`): each strike takes the next voice and a note of the chord,
 restarts its envelopes from where they are (no drop to silence first) and lets it go after 20 .. 60 ms; a burst of
 coloured noise goes with it (60 dB down in 1 .. 40 ms, dark to bright).
 - MACHINE: a pulse at 0.25 .. 18 a second, each strike early or late, the pace wandering; an accent pattern; now and then
@@ -56,12 +56,57 @@ coloured noise goes with it (60 dB down in 1 .. 40 ms, dark to bright).
 **Its modulation**: four LFOs, one on each macro: rate 0.02 .. 1.5 Hz, depth, centre, shape (sine, triangle, smooth
 random). The menu's LFO draws them anew, with the atoms' LFOs.
 
+## Physical models (build 64, core/pm.c)
+
+Beside the FM, ten physical families: HARP (an extended Karplus-Strong string: allpass for the fraction, a three-tap
+linear-phase loss filter, Q30 decay), WIRE (StifKarp: four biquad allpasses stretching the partials), SNARE (KS drum:
+random sign flips), PIPE (inverted reflection: odd harmonics), SITAR (the curved bridge: a length shortening with the
+displacement), GONG (stiffness and a tension falling with the energy), BOWL (banded waveguides: STK's bars, glass,
+Tibetan bowl doublets), BAR (modal: STK ModalBar's marimba, vibraphone, agogo, wood, beats, clump), BELL (modal bell
+partials, each a little off), SKIN (a membrane's Bessel modes). Excitation: a burst a period long (its brightness the
+hardness and the level, combed at the pick position) or a mallet (a raised-cosine pulse of one strike's area); held, a
+dust of small strikes. Struck on the same clocks as the FM's struck families (SCATTER, MACHINE). Three voices, a
+1024-sample line each (6 KB); coefficients worked out once a molecule in double without libm; rounding and a DC leak
+in the loop, a quiet gate after 1.5 s of silence. The design lives in the patch's bytes (fm_patch_t.p), so saved
+patches keep their layout.
+
+## Diversity (build 64)
+
+Eight FM families from the literature (families.c: Truax's normal forms, Schottstaedt's piano, near-unity membranes,
+Chowning's tubular bell, fixed formants, loop feedback, the index rising as it dies, timbral tremolo). Effect values:
+two times in five a continuous value is drawn by an arcsine towards its bounds' ends. LFOs: 15 % of them at 3 .. 12 Hz
+(an allure). A new molecule (the encoder) is of none of the last three families and, half the time, of another kind
+(held FM, struck FM, physical). Family weights follow the lab's rarity measure (tests/lab.c, tools/lab_weights.py).
+Measured on one scale (tools/lab_compare.py), against build 63: Vendi 4.8 -> 6.5 for generators alone, 5.9 -> 6.6 for
+whole molecules.
+
 ## The effects (the atoms)
 
-Since 0.52 the atoms are **Norilsk's 25 effects** (core/vendor/norilsk/effects.c, copied unchanged from Norilsk's
+Since build 52 the atoms are **Norilsk's 25 effects** (core/vendor/norilsk/effects.c, copied unchanged from Norilsk's
 rack.c by tools/vendor_norilsk.py) and **Tonitor's DELAY and REVERB**. Each has four values, 0 .. 100, drawn within
 Norilsk's bounds for it; each atom's output passes Norilsk's guard (a peak rider to half scale). MODAL, STRING and
 BANK are tuned to the generator's root.
+
+Since build 62 eight more, Molecular's own (core/atoms.c, written from published ideas; chosen from Vascular's
+processors, open-source DSP and the electroacoustic studio): SPIRAL (a pitch shifter in a feedback delay, -12 .. +12
+semitones, each repeat transposed again; its splice from smooth to the H910's glitch), SOURCE (LPC, order 4 .. 16 every
+128 samples: the residual, noise or a saw on the root as the excitation, the body followed or held), ENVEL (gain
+(slow / fast)^a: attacks removed or sharpened; (loudest / slow)^(2 x invert), up to +36 dB, gated), LPG (onsets strike a
+vactrol-like control opening a low-pass and the gain; uncertainty draws each strike's decay and reach), BARBER (four
+taps sweeping staggered ramps, sin^2 faded: an endless comb), STICK (a sprung mass on a belt driven by the sound,
+static and kinetic friction), MORPHO (six complementary bands, each delayed and fed back, stored decimated: up to
+0.74 s for the lows), DISINTEGRATE (up to 8 short rings in series, each read head pushed back by the level). Their
+kinds are numbered after DELAY and REVERB, so a saved patch keeps its atoms.
+
+Since build 63 eleven more (core/atoms.c; GSM's codec in core/vendor/gsm, wrapped by core/gsm.c): REED (an STK-style
+clarinet, half-period bore, reed table clamp(0.7 - 0.3 d), breath from the sound's level), NLF (Dobson: y = a y1 + b y2 +
+d y[n-L]^2 + x, d scaled by the level), SUBHARM (squares flipping every N zero crossings: f / N), SPARK (a falling damped
+burst at each rising crossing), CONTRAST (12 bands, 0.63 octave apart, levels per hertz; gain (level / mean)^c, c -1 ..
++2, trace K), BLUR (the same bank followed slowly, replayed as drifting sines, band noise or dust), DOPPLER (an orbit:
+delay d / c, 1 / d, air), GSM (06.10 at a third .. an eighth of the rate, frames stuttered), GENDY (each period
+redrawn as an N-corner polygon with random walks), INVERT (mirror about F by a cosine between low-passes), SQUELCH
+(sampled at a rate and redrawn by quadratic curves through midpoints, a resonance at half the rate). Atoms that would
+otherwise hold a filter's rounding let go after 0.22 s of silence.
 
 | Family (colour) | Atoms (symbol) |
 |---|---|
@@ -76,7 +121,7 @@ DELAY and REVERB are heavy atoms: edge only, one each at most. The others share 
 molecule is drawn so that its atoms fit (TAPE and REVERSE, the largest, take ~20 KB). The right button draws every
 atom's values anew (not its kind nor its place).
 
-**The atoms' LFOs** (0.54): each atom but DELAY and REVERB has one LFO on one of its values, at the generator's rates
+**The atoms' LFOs** (build 54): each atom but DELAY and REVERB has one LFO on one of its values, at the generator's rates
 and shapes, swinging it up to half its bounds' span either way and kept within those bounds (Norilsk's modulation
 does the same, mod.c). Switches and coarse steps are never moved (FILTER's type, BANK's set, XOR's operation ..:
 fx.c FX_LFO_OK): BANK's set, moved, clicked 2000 times in 10 s. A quarter of the LFOs are still.
@@ -103,8 +148,8 @@ fx.c FX_LFO_OK): BANK's set, moved, clicked 2000 times in 10 s. A quarter of the
 | Encoder turn | volume (the overlay shows it, large) | the next item; in PATCHES, the next slot; in SETTINGS, the value | chooses NO or YES |
 | Encoder press (short) | a new molecule | does the item; in PATCHES, loads the slot | does the choice |
 | Encoder press held 0.8 s | opens the menu | back to the molecule; in PATCHES, saves to the slot | - |
-| Left button | the molecule rewired; held 0.8 s: the LFOs anew (0.58) | in PATCHES, SETTINGS: back | - |
-| Right button | the atoms' values drawn anew; held 0.8 s: MOTION on or off (0.58) | in PATCHES, SETTINGS: back | - |
+| Left button | the molecule rewired; held 0.8 s: the LFOs anew (build 58) | in PATCHES, SETTINGS: back | - |
+| Right button | the atoms' values drawn anew; held 0.8 s: MOTION on or off (build 58) | in PATCHES, SETTINGS: back | - |
 
 The side buttons act when let go, or at 0.8 s held; both held together, neither (both held 3 s: update mode).
 
@@ -113,10 +158,10 @@ Molecular boots into **POWER ON?** with NO and YES. The firmware must hold the p
 (the board's power latch, to be found in the bring-up). YES starts the first molecule; NO, or no answer for 10 s, cuts
 the power again. Letting go of the hold that booted the chip answers nothing.
 
-**The menu** (0.54): one item at a time, its colour round the screen, a picture and its word, three dots below for
-where it is: **SETTINGS**, **PATCHES**, **POWER** (it opens at SETTINGS; turning stops at either end). (0.54 .. 0.57
-had LFO first; 0.58 moved it to the left button held.)
-- **SETTINGS** (0.58): the patch's own settings, saved with it. The first: **MOTION RATE**, MOTION's events a minute,
+**The menu** (build 54): one item at a time, its colour round the screen, a picture and its word, three dots below for
+where it is: **SETTINGS**, **PATCHES**, **POWER** (it opens at SETTINGS; turning stops at either end). (build 54 .. build 57
+had LFO first; build 58 moved it to the left button held.)
+- **SETTINGS** (build 58): the patch's own settings, saved with it. The first: **MOTION RATE**, MOTION's events a minute,
   Vascular's steps: 6, 10, 15, 20, 30, 45, 67, 90, 120 (20 to begin with; a new molecule keeps the rate). Turn: the
   value; a press, a held press or a side button: back.
 - **PATCHES**: twelve numbered slots, four a row; an empty slot is outlined, a filled one solid white, the chosen one
@@ -126,30 +171,30 @@ had LFO first; 0.58 moved it to the left button held.)
 - **POWER**: **POWER OFF?** with NO and YES. YES fades the sound out, shows OFF and cuts the power; NO returns to the
   molecule, still sounding.
 
-**The left button rewires** (0.54): the same atoms, with their values and LFOs, bound anew by the molecule's rules
+**The left button rewires** (build 54): the same atoms, with their values and LFOs, bound anew by the molecule's rules
 (DELAY and REVERB still at the edge) and laid out again, through a short fade; the generator, DELAY and REVERB carry
 on. A molecule whose atoms allow one wiring only (one atom; or only DELAY and REVERB) says NO REWIRE.
 
-**MOTION** (0.58, fluid since 0.59; core/motion.c), after Vascular's angiogenesis: the right button held starts it,
+**MOTION** (build 58, fluid since build 59; core/motion.c), after Vascular's angiogenesis: the right button held starts it,
 held again stops it (STILL). Nothing is ever placed, everything moves there: every disc wanders on a smoothly turning
 heading; the bonds pull like springs towards their length, crowded discs push apart, the edges turn them back, and a
 gentle pull keeps the molecule off the corners. Each edge atom's stereo place follows it across (its gains glide).
 MOTION RATE times a minute one event, drawn as Vascular draws them: rewired (2 in 8: the same atoms, each where it
 stands; the new bonds draw them together over a second or two), an atom grown (2 in 8: it swells from its parent's
 side; else pruned or rewired), an atom pruned (1 in 8: it shrinks away first; never the last), one atom's values anew
-(3 in 8). The generator is never touched. The sound moves with the picture (0.60): nothing is faded or cleared. A changed shape morphs: each atom keeps its
+(3 in 8). The generator is never touched. The sound moves with the picture (build 60): nothing is faded or cleared. A changed shape morphs: each atom keeps its
 state; one bound to another parent crossfades its input from the old to the new over a second; a grown atom comes in
 dry and turns wet; a pruned one turns dry and leaves the mix before it goes; every node's share of the output glides
 to what the new shape gives it. One atom's values anew glide there from where they are, over a whole interval
 between events (at least 1.5 s), so the values are always on their way; only the values an LFO may move (a switch or
 a coarse step would jump), and DELAY's and REVERB's not at all. The left button's rewiring morphs too. The
 drift's pace follows the rate: 0.4 px a second per event a minute (8 px/s at 20), each disc 0.6 .. 1.4 of it.
-(0.58 laid the molecule out anew at each event: it leapt.)
+(build 58 laid the molecule out anew at each event: it leapt.)
 
 **Patches in flash**: a 4 KB sector a slot from 0x170000 (room for 16), past the application (device/verify.py keeps
 the image below it) and outside every range the stock firmware erases. A record holds a version, so a slot written by
 a later layout reads as empty; an older one, shorter (a version only adds to the end of the record), loads with what
-it lacks zero (a 0.54 patch: held, no clock).
+it lacks zero (a build 54 patch: held, no clock).
 
 On both questions NO is chosen first, so a stray press is safe. The chosen answer is a filled white box with black
 type, the other a white outline with white type (both legible). Closing the menu with a held press, NO first, and the

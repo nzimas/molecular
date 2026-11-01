@@ -2,7 +2,8 @@
  * MOLECULAR: the generator, the molecule's nucleus. Tonitor's six-operator FM (vendor/tonitor/fm.c): one patch of
  * one of the families (families.c), a chord of GEN_NV notes -- held for as long as the molecule lives, each voice
  * swelling in, or struck on the clock (mol.h gen_clock_t) -- and four LFOs moving the patch's macros (BRIGHTNESS,
- * DETUNE, SATURATION, MOTION). */
+ * DETUNE, SATURATION, MOTION). Or, a physical family (0.64, pm.c): three voices of a string, tube, bowl, bar, bell or
+ * membrane, struck on the same clocks or held by a dust of small strikes (the LFOs then idle: no macros to move). */
 
 #define GEN_NV 3u
 #define GEN_SWELL 4096           /* blocks for a voice to swell in: ~3 s */
@@ -35,6 +36,8 @@ typedef struct {
     int32_t kenv, kdec, kcol, kcol0, klp;   /* the burst: its level, its fall a sample, its colour, its low-pass */
     int32_t khiss, henv, hdec, hlp;         /* the hiss: samples until it starts; its level, fall, low-pass */
     rnd_t kr;
+    pm_voice_t pv[GEN_NV];       /* 0.64: a physical family's voices */
+    pm_note_t pn[GEN_NV];        /* .. and each chord note's loop, worked out at the start */
     lfo_run_t lr[NMAC];          /* the LFOs as they run */
     rnd_t r;                     /* the smooth random's draws (audio side only) */
     int8_t mac[NMAC];            /* the macros this block, for the screens */
@@ -56,6 +59,34 @@ static void gen_draw_lfos(gen_design_t *g, rnd_t *r)
     }
 }
 
+AINL int gen_is_pm(const gen_design_t *g) { return fam_is_pm(g->patch.family); }
+AINL const pm_design_t *gen_pm(const gen_design_t *g) { return (const pm_design_t *)(const void *)g->patch.p; }
+/* a family's patch and clock from a seed: Tonitor's (fm.c), Molecular's FM ones (families.c), the physical ones (pm.c);
+ * an FM patch measured (slow: the main loop only) */
+static void gen_family(gen_design_t *g, gen_clock_t *c, const fam_pick_t *fp, uint32_t seed)
+{
+    memset(c, 0, sizeof *c);
+    if (fam_is_pm(fp->f)) {
+        pm_generate(&g->patch, c, fp->f, seed);
+        return;
+    }
+    if (fp->f < FF_N)
+        fm_generate(&g->patch, fp->f, seed, fp->path, GEN_NOW);
+    else
+        fam_generate(&g->patch, c, fp->f, seed);
+    fm_measure(&g->patch);
+}
+/* the family a seed draws (gen_draw's first draw, alone: cheap) */
+static uint32_t gen_family_of(uint32_t seed)
+{
+    rnd_t rr;
+    uint8_t w[FAM_NPICK];
+    uint32_t i;
+    rnd_seed(&rr, seed ^ 0xFA3Du);
+    for (i = 0; i < FAM_NPICK; i++)
+        w[i] = FAM_PICK[i].w;
+    return FAM_PICK[rnd_weighted(&rr, w, FAM_NPICK)].f;
+}
 /* the whole generator from a seed: a family (families.c), its patch (measured, so slow: the main loop only) and
  * clock, the chord, the LFOs */
 static void gen_draw(gen_design_t *g, gen_clock_t *c, uint32_t seed)
@@ -70,12 +101,7 @@ static void gen_draw(gen_design_t *g, gen_clock_t *c, uint32_t seed)
     for (i = 0; i < FAM_NPICK; i++)
         w[i] = FAM_PICK[i].w;
     fp = &FAM_PICK[rnd_weighted(&rr, w, FAM_NPICK)];
-    memset(c, 0, sizeof *c);
-    if (fp->f < FF_N)
-        fm_generate(&g->patch, fp->f, seed, fp->path, GEN_NOW);
-    else
-        fam_generate(&g->patch, c, fp->f, seed);
-    fm_measure(&g->patch);
+    gen_family(g, c, fp, seed);
     rnd_seed(&rr, seed ^ 0x6E4Eu);
     root = rnd_in(&rr, GEN_ROOT_LO, GEN_ROOT_HI);
     ch = GEN_CHORDS[rnd_below(&rr, (int32_t)GEN_NCHORD)];
@@ -92,6 +118,9 @@ static void gen_start(gen_state_t *s, const gen_design_t *g, const gen_clock_t *
     int32_t ms;
     memset(s, 0, sizeof *s);
     rnd_seed(&s->r, seed ^ 0x1F0u);
+    if (gen_is_pm(g))                                /* (each chord note's loop, worked out once: double, slow) */
+        for (i = 0; i < GEN_NV; i++)
+            pm_prepare(&s->pn[i], gen_pm(g), g->note[i]);
     if (c->mode != GK_HOLD) {
         rnd_seed(&s->kr, seed ^ 0x4B4E4F43u);
         ms = clampi(c->click, 1, 60);
@@ -106,6 +135,11 @@ static void gen_start(gen_state_t *s, const gen_design_t *g, const gen_clock_t *
             return;
     }
     for (i = 0; i < GEN_NV; i++) {
+        if (gen_is_pm(g)) {                          /* held: each voice its note, the dust striking it */
+            s->pv[i].nt = s->pn[i];
+            s->pv[i].live = 1;
+            continue;
+        }
         fm_note_on(&s->v[i], &g->patch, g->note[i], 1);
         fm_hold(&s->v[i], &g->patch);                /* held at full: the drone never decays */
     }
@@ -153,6 +187,10 @@ static void gen_strike(gen_state_t *s, const gen_design_t *g, const gen_clock_t 
     if (c->crackle)
         return;
     s->next_v = (k + 1u) % GEN_NV;
+    if (gen_is_pm(g)) {                              /* a physical voice: struck at the level (it rings on) */
+        pm_strike(&s->pv[k], &s->pn[n], gen_pm(g), lev, &s->kr);
+        return;
+    }
     gen_retrig(&s->v[k], &g->patch, g->note[n]);
     s->vg[k] = lev;
     s->gate[k] = maxi(1, (int32_t)c->gate * 4 * 1378 / 1000);
@@ -162,7 +200,7 @@ static FAST void gen_clock(gen_state_t *s, const gen_design_t *g, const gen_cloc
 {
     uint32_t k;
     for (k = 0; k < GEN_NV; k++)                     /* each struck note let go after its gate */
-        if (s->gate[k] > 0 && --s->gate[k] == 0)
+        if (s->gate[k] > 0 && --s->gate[k] == 0 && !gen_is_pm(g))
             fm_note_off(&s->v[k], &g->patch);
     if (s->khiss > 0 && (s->khiss -= (int32_t)CTL) <= 0)
         s->henv = c->off * 327;
@@ -227,9 +265,16 @@ static FAST void gen_block(gen_state_t *s, const gen_design_t *g, const gen_cloc
         out[i] = 0;
     for (k = 0; k < GEN_NV; k++) {
         int32_t sw = s->swell[k], gain;
-        if (!fm_render(&s->v[k], &g->patch, buf, s->mac))
+        if (gen_is_pm(g)) {
+            for (i = 0; i < CTL; i++)
+                buf[i] = 0;
+            if (!pm_render(&s->pv[k], gen_pm(g), buf, c->mode == GK_HOLD, &s->r))
+                continue;
+        } else if (!fm_render(&s->v[k], &g->patch, buf, s->mac))
             continue;
-        if (c->mode != GK_HOLD && !c->crackle)
+        if (gen_is_pm(g) && c->mode != GK_HOLD)
+            gain = Q15;                              /* (the strike's level is in its excitation) */
+        else if (c->mode != GK_HOLD && !c->crackle)
             gain = s->vg[k] + (s->vg[k] >> 1);       /* struck: at its strike's level, x 1.5 (a strike's peak is
                                                       * brief: at the drones' x 0.5 struck molecules peaked 2 .. 11 dB
                                                       * under them, the leveller's lift all used) */

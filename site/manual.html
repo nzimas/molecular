@@ -1,5 +1,5 @@
 <h1>Manual</h1>
-<p class="lead">Molecular 0.61 for the Sonicake Pocket Master.</p>
+<p class="lead">Molecular build 64 for the Sonicake Pocket Master.</p>
 <nav class="toc" aria-label="Contents">
   <a href="#controls">The controls</a>
   <a href="#power">Powering on and off</a>
@@ -64,8 +64,9 @@
 </div>
 
 <h2 id="generator">The generator</h2>
-<p>Six-operator FM. Each new molecule draws a patch from one of 40 families, a chord to play it on, and four LFOs
-  on its macros.</p>
+<p>Two engines: six-operator FM and physical models. Each new molecule draws one of 66 families, a chord to play it
+  on, and, for FM, four LFOs on its macros. A new molecule is never of the family of the last three, and often of
+  another kind, so successive sounds contrast.</p>
 <dl class="features wide">
   
   <div><dt>Ambient</dt>
@@ -84,6 +85,16 @@
   <dd>Metal struck, never a drum, on clocks that never quite repeat: ANVIL, STAMP, RIVET and SHEET scatter their
     strikes in clusters and pauses; GEARS, PISTON, RATCHET and FORGE run like machines whose pace wanders, some with
     a hiss of steam between strikes.</dd></div>
+  <div><dt>From the FM literature</dt>
+  <dd>TRUAX (one set of partials, its energy moving: Truax's normal forms), HAMMER (Schottstaedt's piano), TAM
+    (tam-tams and membranes), CHIME (Chowning's tubular bell, with its hum below the note), FORMANT (the chord fused in
+    fixed resonances), GROWL (feedback through a chain of operators), GLOW (brightening as it dies), ALLURE (the timbre
+    pulsing at 3 to 12 Hz).</dd></div>
+  <div><dt>Physical models</dt>
+  <dd>HARP (a plucked string), WIRE (a stiff struck wire, its partials stretched), SNARE (Karplus-Strong's drum), PIPE
+    (a struck stopped pipe), SITAR (a buzzing bridge), GONG (stiff, its pitch falling as it dies), BOWL (banded
+    waveguides: bars, glass, a Tibetan bowl), BAR (marimba, vibraphone, agogo, wood), BELL, SKIN (a membrane). Struck
+    on the same clocks, or held by a dust of small strikes.</dd></div>
 </dl>
 
 <h2 id="atoms">The atoms</h2>
@@ -117,6 +128,25 @@
   <span class="sym" style="background:#FF9628">WS</span><span class="nm">WAVESET</span><span class="what">The sound cut at its zero crossings into its own small cycles, replayed a group at a time: repeated, reversed, shuffled or left out (after Trevor Wishart).</span>
   <span class="sym" style="background:#FF64D2">XM</span><span class="nm">XMOD</span><span class="what">The sound against its own copy 1 to 40 ms back: folded, diode ring or a comparator (after Mutable Instruments&#39; Warps).</span>
   <span class="sym" style="background:#FF64D2">CS</span><span class="nm">CHAOS</span><span class="what">A double-well oscillator pushed by the sound: light, a resonance at a fixed pitch; harder, rough; hardest, jumping between its wells.</span>
+  <span class="sym" style="background:#B4A0FF">SR</span><span class="nm">SPIRAL</span><span class="what">A pitch shifter inside a feedback delay: every repeat transposed again, so echoes climb or fall in endless staircases. Its splice runs from smooth to the raw glitch of the Eventide H910.</span>
+  <span class="sym" style="background:#50DCFF">SO</span><span class="nm">SOURCE</span><span class="what">LPC, from IRCAM&#39;s source-filter tradition: the sound&#39;s body kept, its source replaced by noise (a whisper) or a buzz tuned to the generator&#39;s root; the body can be held.</span>
+  <span class="sym" style="background:#FF9628">EN</span><span class="nm">ENVEL</span><span class="what">The sound&#39;s shape, not its colour: attacks taken away so plucks become swells (Schaeffer&#39;s cut bell), attacks sharpened, or the envelope inverted so decays come back up.</span>
+  <span class="sym" style="background:#50DCFF">LG</span><span class="nm">LPG</span><span class="what">A Buchla low-pass gate struck by the sound&#39;s onsets, with a source of uncertainty drawing each strike&#39;s decay and colour.</span>
+  <span class="sym" style="background:#FF64D2">BA</span><span class="nm">BARBER</span><span class="what">A comb that rises or falls for ever: four sweeping taps faded in and out, a Shepard-Risset flanger; still in the middle of its rate.</span>
+  <span class="sym" style="background:#78FF78">SK</span><span class="nm">STICK</span><span class="what">Stick-slip friction: the sound drags a sprung mass that sticks and slips. Squeaks, creaks, bowed chatter, rubbed glass.</span>
+  <span class="sym" style="background:#B4A0FF">MP</span><span class="nm">MORPHO</span><span class="what">Spectral delay after Poullin&#39;s Morphophone (GRM, 1953): six bands, each delayed and fed back on its own, so attacks fan out into chirps.</span>
+  <span class="sym" style="background:#B4A0FF">DI</span><span class="nm">DISINTEGRATE</span><span class="what">Short read heads in series, pushed back by the sound&#39;s own level: smeared and granulated by how hard it is hit (after Airwindows).</span>
+  <span class="sym" style="background:#78FF78">RD</span><span class="nm">REED</span><span class="what">The sound blows a clarinet: a reed and a bore tuned about the generator&#39;s root (after the Synthesis ToolKit). Squawks, overblowing, multiphonics; it rests when the sound stops.</span>
+  <span class="sym" style="background:#50DCFF">NL</span><span class="nm">NLF</span><span class="what">Dobson&#39;s nonlinear filter: from a resonant filter into pitched buzz, squeals and chaos, its nonlinearity riding the sound&#39;s level.</span>
+  <span class="sym" style="background:#FF64D2">SU</span><span class="nm">SUBHARM</span><span class="what">Undertones, as on the Mixtur-Trautonium: two squares dividing the sound&#39;s zero crossings by 2 to 8, or the sound ring-modulated by them. Erratic on noise.</span>
+  <span class="sym" style="background:#FF9628">PK</span><span class="nm">SPARK</span><span class="what">Every rising zero crossing fires a spark, a falling damped burst part tone, part noise, at the sound&#39;s level (after Airwindows&#39; Nikola): electric pulse trains locked to the sound.</span>
+  <span class="sym" style="background:#50DCFF">CT</span><span class="nm">CONTRAST</span><span class="what">Spectral contrast after GRM Contrast: twelve bands, the strong raised (noise turns tonal) or the weak (tones turn to breath); a trace keeps only the loudest few.</span>
+  <span class="sym" style="background:#B4A0FF">BL</span><span class="nm">BLUR</span><span class="what">The sound replaced by its slowly moving spectral shadow (after CDP&#39;s blur, GRM Evolution): twelve band levels following slowly, played again as drifting sines, noise or dust.</span>
+  <span class="sym" style="background:#D2D2FF">DO</span><span class="nm">DOPPLER</span><span class="what">A virtual source on an orbit: the pitch bends as it passes, the level and the air&#39;s darkness follow its distance (after GRM Doppler, IRCAM Spat).</span>
+  <span class="sym" style="background:#FF9628">GS</span><span class="nm">GSM</span><span class="what">The 13 kbit/s phone codec of the first digital mobiles, fed music: metallic, bubbling, pitch-hunting; frames can stutter.</span>
+  <span class="sym" style="background:#FF9628">GY</span><span class="nm">GENDY</span><span class="what">Xenakis&#39; dynamic stochastic synthesis applied to the sound: each period redrawn as a polygon whose corners and sides take random walks.</span>
+  <span class="sym" style="background:#FF64D2">IN</span><span class="nm">INVERT</span><span class="what">The spectrum mirrored about a frequency: what was low is high, rhythm kept, timbre turned inside out (after the speech scramblers).</span>
+  <span class="sym" style="background:#50DCFF">SQ</span><span class="nm">SQUELCH</span><span class="what">Undersampled and drawn again by curves, a resonance at half the rate (after Airwindows&#39; ZAcidLowpass): rings, aliases, squelches.</span>
   <span class="sym" style="background:#D2D2FF">DL</span><span class="nm">DELAY</span><span class="what">A stereo delay (Tonitor&#39;s). At the edge of the molecule only, one at most.</span>
   <span class="sym" style="background:#D2D2FF">RV</span><span class="nm">REVERB</span><span class="what">A stereo reverb (Tonitor&#39;s). At the edge of the molecule only, one at most.</span>
 </div>
@@ -165,11 +195,17 @@
 </div>
 
 <h3 id="settings">Settings</h3>
-<p>The patch's own settings, saved with it. The first is <b>MOTION RATE</b>: motion's events a minute, 6, 10, 15, 20,
-  30, 45, 67, 90 or 120 (20 to begin with). Turn to change it; the arrows show which way it can go. A press, a hold or
-  a side button goes back. A new molecule keeps the rate you set; a loaded patch brings its own.</p>
+<p>The patch's own settings, saved with it, one a page; the dots below say which. Turn to change the value; the arrows
+  show which way it can go. A press goes to the next page (after the last, back to the molecule); a hold or a side
+  button goes back. A new molecule keeps what you set; a loaded patch brings its own.</p>
+<ul>
+  <li><b>MOTION RATE</b>: motion's events a minute, 6, 10, 15, 20, 30, 45, 67, 90 or 120 (20 to begin with).</li>
+  <li><b>MIX</b>: how much of the sound is the effects, 0 to 100 % in steps of 5 (50 to begin with). At 0 only the
+    generator is heard; at 100 only the atoms.</li>
+</ul>
 <div class="screens">
   <figure><img src="assets/screens/09a_settings_20.png" alt="MOTION RATE 20 a minute" width="640" height="512"><figcaption>MOTION RATE.</figcaption></figure>
+  <figure><img src="assets/screens/09a4_settings_mix.png" alt="MIX 50 percent wet" width="640" height="512"><figcaption>MIX.</figcaption></figure>
 </div>
 
 <h3 id="patches">Patches</h3>

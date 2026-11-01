@@ -2,7 +2,8 @@
 #   ../../toolchain/nds make -C device
 # Flags as the MVsilicon SDK's examples (Example_GPIO/Debug/makefile), -O2 for the audio.
 # A diagnostic build: make DIAG=-DDIAG_STEP_MS=10000 (the progress meter, hal.c).
-SDK ?= $(abspath ../../sdk/bp1048_sdk/MVsB1_Base_SDK)   # MVsilicon's BP10xx SDK, not in this tree: make SDK=...
+# MVsilicon's BP10xx SDK, not in this tree: make SDK=... (no comment on the line itself: its spaces would join the value)
+SDK ?= $(abspath ../../sdk/bp1048_sdk/MVsB1_Base_SDK)
 CC := nds32le-elf-gcc
 OUT := ../build/device
 ARCH := -mcmodel=medium -mcpu=d1088-spu -mext-dsp -mext-zol   # the v3f toolchain: ABI2 FP+, as the SDK libraries

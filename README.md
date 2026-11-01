@@ -9,9 +9,13 @@ set it in motion, and listen to what comes back. It is a conversation with the i
 
 **Website, manual and browser installer: <https://nzimas.github.io/molecular/>**
 
-- **The generator:** Tonitor's six-operator FM engine, with patches from 40 families: Tonitor's ambient and harsh
-  families, held sounds after Norilsk's recipes, and struck metal on unstable clocks.
-- **The atoms:** Norilsk's 25 effects, with Tonitor's delay and reverb. Each atom takes its parent's sound, and
+- **The generator:** two engines, 66 families. Tonitor's six-operator FM (Tonitor's ambient and harsh families, held
+  sounds after Norilsk's recipes, struck metal on unstable clocks, recipes from the FM literature) and physical models
+  (Karplus-Strong strings and tubes, banded waveguides, modal bars, bells and membranes).
+- **The atoms:** 46 effects: Norilsk's 25, Tonitor's delay and reverb, and 19 of its own from the
+  electroacoustic studio and beyond (pitch spirals, LPC, envelope inversion, a Buchla low-pass gate, an endless comb,
+  friction, a spectral delay, disintegration, a reed, a nonlinear filter, undertones, sparks, spectral contrast and
+  blur, Doppler, the GSM codec, Xenakis' GENDY, spectral inversion, squelch). Each atom takes its parent's sound, and
   the outermost atoms are heard where they stand across the screen.
 - **Motion:** the molecule moving by itself. This is thermal motion: the atoms drift, the bonds pull like springs.
   It also rearranges itself at a set rate: rewired, atoms grown and pruned, values gliding. Nothing jumps, and the

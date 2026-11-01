@@ -75,7 +75,7 @@ int main(void)
     WDG_Disable();                                   /* again, whatever the clocks did */
     GIE_ENABLE();
     usb_start();
-    usb_log("Molecular 0.61");
+    usb_log("Molecular build 64");
     usb_logn("keys held", held);
     usb_logn("watchdog reset", (uint32_t)wd);
     push_held = hal_init(held);
@@ -133,6 +133,13 @@ int main(void)
                 usb_logn("late", hal_late);
                 usb_logn("xfers", hal_xfers);
                 usb_logn("relinks", hal_relinks);
+                {   /* 0.63: the audio's load, % of real time over the last 2 s, and its longest block (726 us each) */
+                    extern volatile uint32_t hal_busy_us, hal_block_max_us;
+                    usb_logn("load %", hal_busy_us / 20000u);
+                    usb_logn("block max us", hal_block_max_us);
+                    hal_busy_us = 0;
+                    hal_block_max_us = 0;
+                }
                 hal_peak = 0;
             }
         }

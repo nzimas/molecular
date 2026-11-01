@@ -25,32 +25,65 @@
  *   RATCHET  irregular clatter on a bar or a bell, bouncing                                     MACHINE
  *   FORGE    a drop hammer: slow heavy strikes, each bouncing, ringing long                     MACHINE
  * And Tonitor's harsher families (BRUIT, FRICTION, SHARDS, STATIC, GLITCH), drawn on its open path: the ambient path
- * the rest are drawn on softens everything. */
+ * the rest are drawn on softens everything.
+ *
+ * 0.64, from the FM literature (Truax 1977, Schottstaedt 1977, Chowning's bell in CCRMA's CLM, Plaits' ratios, a count
+ * of 9,606 DX7 voices; notes/DIVERSITY_RESEARCH.md in the research tree):
+ *   TRUAX    one set of partials, the energy moving through it: three pairs, each a member of one of Truax's normal
+ *            forms (2:5 -> carriers 1, 1.5, 3.5, 4 over 2.5 ...), their envelopes crossing           held
+ *   HAMMER   Schottstaedt's piano: modulators 1:1 and 4:1, stretched half a percent, the index spiking at the strike
+ *   TAM      tam-tams and membranes: modulators near the carrier (x 1.15 .. 1.8, irrational), fed back hard
+ *   CHIME    Chowning's tubular bell: three pairs, 2:5, 0.6:4.8, 0.22:0.83 (the last a hum under the fundamental)
+ *   FORMANT  carriers fixed where formants are (300 Hz .. 3 kHz), the modulators following the chord: the three notes
+ *            fused in one resonance                                                                  held
+ *   GROWL    the loop algorithms (DX7 4 and 6: feedback through two or three operators) on inharmonic ratios: rasp held
+ *   GLOW     against nature: the index rising as the sound dies (struck slowly)
+ *   ALLURE   Schaeffer's allure: a timbral tremolo at 3 .. 12 Hz, on the modulators only (the brightness pulses)  held */
 
 enum { MF_HUM = FF_N, MF_SWARM, MF_ORGAN, MF_MODES, MF_STEAM, MF_SCRAPE, MF_CORONA, MF_ASH,
-       MF_ANVIL, MF_STAMP, MF_RIVET, MF_SHEET, MF_GEARS, MF_PISTON, MF_RATCHET, MF_FORGE, MF_END };
+       MF_ANVIL, MF_STAMP, MF_RIVET, MF_SHEET, MF_GEARS, MF_PISTON, MF_RATCHET, MF_FORGE,
+       MF_TRUAX, MF_HAMMER, MF_TAM, MF_CHIME, MF_FORMANT, MF_GROWL, MF_GLOW, MF_ALLURE,   /* 0.64 */
+       MF_END };
 static const char *const MF_NAME[MF_END - FF_N] = {"HUM", "SWARM", "ORGAN", "MODES", "STEAM", "SCRAPE", "CORONA", "ASH",
                                                    "ANVIL", "STAMP", "RIVET", "SHEET", "GEARS", "PISTON", "RATCHET",
-                                                   "FORGE"};
-static const char *fam_name(uint32_t f) { return f < FF_N ? FF_NAME[f] : f < MF_END ? MF_NAME[f - FF_N] : "FM"; }
-AINL int fam_is_struck(uint32_t f) { return f >= MF_ANVIL && f < MF_END; }
+                                                   "FORGE", "TRUAX", "HAMMER", "TAM", "CHIME", "FORMANT", "GROWL",
+                                                   "GLOW", "ALLURE"};
+/* 0.64: the physical families (pm.c), after these */
+enum { PF_HARP = MF_END, PF_WIRE, PF_SNARE, PF_PIPE, PF_SITAR, PF_GONG, PF_BOWL, PF_BAR, PF_BELL, PF_SKIN, PF_END };
+static const char *const PF_NAME[PF_END - MF_END] = {"HARP", "WIRE", "SNARE", "PIPE", "SITAR", "GONG", "BOWL", "BAR",
+                                                     "BELL", "SKIN"};
+static const char *fam_name(uint32_t f)
+{
+    return f < FF_N ? FF_NAME[f] : f < MF_END ? MF_NAME[f - FF_N] : f < PF_END ? PF_NAME[f - MF_END] : "FM";
+}
+AINL int fam_is_pm(uint32_t f) { return f >= MF_END && f < PF_END; }
+AINL int fam_is_struck(uint32_t f)
+{
+    return (f >= MF_ANVIL && f <= MF_FORGE) || f == MF_HAMMER || f == MF_TAM || f == MF_CHIME || f == MF_GLOW;
+}
 
 /* the draw: a family and the path it is drawn on (Tonitor's), by weight. Tonitor's ambient families as Molecular drew
  * them before (fm.c FF_W6's ambient row), its harsher ones on the open path, the new held ones, the struck ones */
 typedef struct { uint8_t f, path, w; } fam_pick_t;
+/* (0.64: the weights moved towards the families that reach the rarer regions of timbre: tests/lab.c over 1000
+ * generators, tools/lab_weights.py, damped half way) */
 static const fam_pick_t FAM_PICK[] = {
-    {FF_METAL, PATH_AMBIENT, 3}, {FF_DRONE, PATH_AMBIENT, 4}, {FF_ITERATIF, PATH_AMBIENT, 1},
+    {FF_METAL, PATH_AMBIENT, 3}, {FF_DRONE, PATH_AMBIENT, 3}, {FF_ITERATIF, PATH_AMBIENT, 1},
     {FF_SPECTRE, PATH_AMBIENT, 4}, {FF_ABYSS, PATH_AMBIENT, 3}, {FF_CHOIR, PATH_AMBIENT, 4},
-    {FF_BOWED, PATH_AMBIENT, 4}, {FF_HOLLOW, PATH_AMBIENT, 4}, {FF_BLOOM, PATH_AMBIENT, 3}, {FF_TIDE, PATH_AMBIENT, 4},
-    {FF_WIND, PATH_AMBIENT, 2}, {FF_PLUCK, PATH_AMBIENT, 3}, {FF_MALLET, PATH_AMBIENT, 4}, {FF_WARP, PATH_AMBIENT, 1},
+    {FF_BOWED, PATH_AMBIENT, 3}, {FF_HOLLOW, PATH_AMBIENT, 3}, {FF_BLOOM, PATH_AMBIENT, 3}, {FF_TIDE, PATH_AMBIENT, 3},
+    {FF_WIND, PATH_AMBIENT, 2}, {FF_PLUCK, PATH_AMBIENT, 2}, {FF_MALLET, PATH_AMBIENT, 3}, {FF_WARP, PATH_AMBIENT, 1},
     {FF_SHAPER, PATH_AMBIENT, 3}, {FF_LADDER, PATH_AMBIENT, 4}, {FF_REVERSE, PATH_AMBIENT, 4},
     {FF_CREEP, PATH_AMBIENT, 4}, {FF_CLANG, PATH_AMBIENT, 2},
-    {FF_BRUIT, PATH_OPEN, 3}, {FF_FRICTION, PATH_OPEN, 3}, {FF_SHARDS, PATH_OPEN, 3}, {FF_STATIC, PATH_OPEN, 3},
+    {FF_BRUIT, PATH_OPEN, 3}, {FF_FRICTION, PATH_OPEN, 3}, {FF_SHARDS, PATH_OPEN, 4}, {FF_STATIC, PATH_OPEN, 4},
     {FF_GLITCH, PATH_OPEN, 3},
-    {MF_HUM, PATH_OPEN, 5}, {MF_SWARM, PATH_OPEN, 5}, {MF_ORGAN, PATH_OPEN, 5}, {MF_MODES, PATH_OPEN, 5},
-    {MF_STEAM, PATH_OPEN, 5}, {MF_SCRAPE, PATH_OPEN, 5}, {MF_CORONA, PATH_OPEN, 5}, {MF_ASH, PATH_OPEN, 5},
-    {MF_ANVIL, PATH_OPEN, 6}, {MF_STAMP, PATH_OPEN, 6}, {MF_RIVET, PATH_OPEN, 6}, {MF_SHEET, PATH_OPEN, 6},
-    {MF_GEARS, PATH_OPEN, 6}, {MF_PISTON, PATH_OPEN, 6}, {MF_RATCHET, PATH_OPEN, 6}, {MF_FORGE, PATH_OPEN, 6},
+    {MF_HUM, PATH_OPEN, 4}, {MF_SWARM, PATH_OPEN, 4}, {MF_ORGAN, PATH_OPEN, 4}, {MF_MODES, PATH_OPEN, 4},
+    {MF_STEAM, PATH_OPEN, 4}, {MF_SCRAPE, PATH_OPEN, 4}, {MF_CORONA, PATH_OPEN, 4}, {MF_ASH, PATH_OPEN, 4},
+    {MF_ANVIL, PATH_OPEN, 7}, {MF_STAMP, PATH_OPEN, 7}, {MF_RIVET, PATH_OPEN, 7}, {MF_SHEET, PATH_OPEN, 6},
+    {MF_GEARS, PATH_OPEN, 7}, {MF_PISTON, PATH_OPEN, 7}, {MF_RATCHET, PATH_OPEN, 6}, {MF_FORGE, PATH_OPEN, 7},
+    {MF_TRUAX, PATH_OPEN, 4}, {MF_HAMMER, PATH_OPEN, 6}, {MF_TAM, PATH_OPEN, 6}, {MF_CHIME, PATH_OPEN, 5},   /* 0.64 */
+    {MF_FORMANT, PATH_OPEN, 4}, {MF_GROWL, PATH_OPEN, 4}, {MF_GLOW, PATH_OPEN, 6}, {MF_ALLURE, PATH_OPEN, 4},
+    {PF_HARP, 0, 5}, {PF_WIRE, 0, 5}, {PF_SNARE, 0, 6}, {PF_PIPE, 0, 4}, {PF_SITAR, 0, 5},     /* 0.64: pm.c */
+    {PF_GONG, 0, 4}, {PF_BOWL, 0, 4}, {PF_BAR, 0, 4}, {PF_BELL, 0, 4}, {PF_SKIN, 0, 5},
 };
 #define FAM_NPICK (sizeof FAM_PICK / sizeof FAM_PICK[0])
 
@@ -282,6 +315,153 @@ static void fam_struck_ops(uint8_t *p, rnd_t *r, int lo, int hi, int bright, int
     p[FP_LPMD] = 0;
 }
 /* the low ones (STAMP, PISTON): the first operator at 0.5 or 1, the tube's odd partials from a modulator at twice it */
+/* ------------------------------------------------------- 0.64 families --- */
+static const int16_t FAM_IRR[16] = {71, 79, 100, 141, 157, 175, 225, 275, 283, 314, 346, 424, 471, 500, 566, 800};
+                                                     /* Plaits' irrational ratios (x 100): sqrt2/2, pi/4 .. 4 sqrt2, 8 */
+static void fam_truax(uint8_t *p, rnd_t *r)
+{
+    static const uint8_t NF[8][2] = {{2, 5}, {3, 7}, {4, 9}, {3, 8}, {2, 7}, {2, 9}, {1, 2}, {1, 3}};
+    const uint8_t *f = NF[rnd_below(r, 8)];
+    int32_t c = f[0], m = f[1], used = 0, k, n;
+    p[FP_ALG] = 4;                                   /* (DX7 5: three pairs, 1-2, 3-4, 5-6) */
+    for (k = 0; k < 3; k++) {
+        int32_t N, x;
+        do {                                         /* a member of the family: (c + N m) or |c - N m|, over c */
+            N = rnd_below(r, 4);
+            x = (rnd_chance(r, 30) && N ? absi(c - N * m) : c + N * m) * 100 / c;
+        } while (((used >> N) & 1) && used != 15);
+        used |= 1 << N;
+        n = 1 + 2 * k;
+        fm_ratio(fm_op(p, n), clampi(x, 50, 3100));
+        fm_op(p, n)[FP_OL] = (uint8_t)rnd_in(r, k ? 78 : 90, 99);
+        fm_op(p, n)[FP_DET] = (uint8_t)rnd_in(r, 5, 9);
+        fm_ratio(fm_op(p, n + 1), m * 100 / c);
+        fm_op(p, n + 1)[FP_OL] = (uint8_t)rnd_in(r, 60, 82);
+    }
+    p[FP_FB] = (uint8_t)rnd_in(r, 0, 2);
+}
+static void fam_hammer(uint8_t *p, rnd_t *r)
+{
+    int n;
+    p[FP_ALG] = 15;                                  /* (DX7 16: one carrier, three branches of modulators) */
+    for (n = 1; n <= 6; n++) {
+        uint8_t *op = fm_op(p, n);
+        switch (n) {
+        case 1: fm_ratio(op, 100); op[FP_OL] = 99;
+            fm_env(op, 99, rnd_in(r, 30, 45), rnd_in(r, 18, 32), rnd_in(r, 40, 60), 99, rnd_in(r, 75, 90), 0, 0); break;
+        case 2: fm_ratio(op, 101); op[FP_OL] = (uint8_t)rnd_in(r, 72, 86); break;   /* 1:1, stretched */
+        case 3: fm_ratio(op, 402); op[FP_OL] = (uint8_t)rnd_in(r, 60, 78); break;   /* 4:1, stretched */
+        case 4: fm_ratio(op, rnd_in(r, 300, 900)); op[FP_OL] = (uint8_t)rnd_in(r, 30, 55); break;
+        default: fm_ratio(op, n == 5 ? 100 : rnd_in(r, 500, 1200)); op[FP_OL] = (uint8_t)rnd_in(r, 35, 60); break;
+        }
+        if (n > 1)                                   /* the index spiking at the strike, then settling, then gone */
+            fm_env(op, 99, rnd_in(r, 60, 75), rnd_in(r, 25, 40), 50, 99, rnd_in(r, 55, 75), 0, 0);
+    }
+    p[FP_FB] = (uint8_t)rnd_in(r, 3, 6);
+}
+static void fam_tam(uint8_t *p, rnd_t *r)
+{
+    int n;
+    int32_t base = rnd_chance(r, 50) ? 50 : 100;
+    p[FP_ALG] = rnd_chance(r, 60) ? 15 : 14;          /* (DX7 16 or 15) */
+    for (n = 1; n <= 6; n++) {
+        uint8_t *op = fm_op(p, n);
+        if (fm_is_carrier(p, n)) {
+            fm_ratio(op, base);
+            op[FP_OL] = 99;
+            fm_env(op, 99, rnd_in(r, 20, 40), rnd_in(r, 15, 30), 40, 99, rnd_in(r, 70, 90), 0, 0);
+        } else {
+            fm_ratio(op, base * rnd_in(r, 115, 180) / 100 + rnd_in(r, -3, 3));
+            if (rnd_chance(r, 25))
+                fm_ratio(op, FAM_IRR[rnd_below(r, 16)] * base / 100);
+            op[FP_OL] = (uint8_t)rnd_in(r, 70, 92);
+            fm_env(op, 99, rnd_in(r, 45, 70), rnd_in(r, 30, 50), 50, 99, rnd_in(r, 40, 70), 0, 0);
+        }
+    }
+    p[FP_FB] = (uint8_t)rnd_in(r, 5, 7);
+}
+static void fam_chime(uint8_t *p, rnd_t *r)
+{
+    static const int16_t CR[3] = {800, 240, 88}, MR[3] = {2000, 1920, 332};   /* x 4: 2:5, 0.6:4.8, 0.22:0.83 */
+    int k;
+    p[FP_ALG] = 4;
+    p[FP_TRNSP] = 0;                                 /* two octaves down: the ratios x 4 (the hum's 0.22 in reach) */
+    for (k = 0; k < 3; k++) {
+        uint8_t *c = fm_op(p, 1 + 2 * k), *m = fm_op(p, 2 + 2 * k);
+        fm_ratio(c, CR[k] + rnd_in(r, -4, 4));
+        fm_ratio(m, MR[k] + rnd_in(r, -6, 6));
+        c[FP_OL] = (uint8_t)(k == 2 ? rnd_in(r, 75, 90) : 99);
+        m[FP_OL] = (uint8_t)(k == 0 ? rnd_in(r, 74, 86) : k == 1 ? rnd_in(r, 66, 80) : rnd_in(r, 55, 70));
+        fm_env(c, 99, rnd_in(r, 18, 30), rnd_in(r, 12, 22), 30, 99, rnd_in(r, 80, 92), 0, 0);
+        fm_env(m, 99, rnd_in(r, 35, 55), rnd_in(r, 25, 40), 40, 99, rnd_in(r, 40, 60), 0, 0);
+        m[FP_RD] = (uint8_t)rnd_in(r, 50, 90);       /* (the index falling steeply up the keyboard) */
+        m[FP_RC] = 2;
+    }
+    p[FP_FB] = 0;
+}
+static void fam_formant(uint8_t *p, rnd_t *r)
+{
+    static const int16_t F1[2] = {48, 95}, F2[2] = {0, 38}, F3[2] = {34, 50};   /* fixed: 300 .. 900 Hz; 1 .. 2.4 kHz;
+                                                                              * 2.2 .. 3.2 kHz */
+    int k;
+    p[FP_ALG] = 4;
+    for (k = 0; k < 3; k++) {
+        uint8_t *c = fm_op(p, 1 + 2 * k), *m = fm_op(p, 2 + 2 * k);
+        if (k == 0)
+            fm_fixed(c, 2, rnd_in(r, F1[0], F1[1]));
+        else if (k == 1)
+            fm_fixed(c, 3, rnd_in(r, F2[0], F2[1]));
+        else
+            fm_fixed(c, 3, rnd_in(r, F3[0], F3[1]));
+        c[FP_OL] = (uint8_t)(99 - k * rnd_in(r, 4, 9));
+        fm_ratio(m, rnd_chance(r, 70) ? 100 : 50);
+        m[FP_OL] = (uint8_t)rnd_in(r, 55, 78);
+    }
+    p[FP_FB] = (uint8_t)rnd_in(r, 0, 3);
+}
+static void fam_growl(uint8_t *p, rnd_t *r)
+{
+    int n;
+    p[FP_ALG] = rnd_chance(r, 50) ? 3 : 5;           /* (DX7 4 and 6: feedback through a chain of operators) */
+    for (n = 1; n <= 6; n++) {
+        uint8_t *op = fm_op(p, n);
+        fm_ratio(op, FAM_IRR[rnd_below(r, 16)] * (rnd_chance(r, 30) ? 2 : 1));
+        op[FP_OL] = (uint8_t)(fm_is_carrier(p, n) ? rnd_in(r, 85, 99) : rnd_in(r, 60, 85));
+        op[FP_DET] = (uint8_t)rnd_in(r, 2, 12);
+    }
+    p[FP_FB] = (uint8_t)rnd_in(r, 4, 7);
+}
+static void fam_glow(uint8_t *p, rnd_t *r)
+{
+    int n;
+    p[FP_ALG] = fam_alg(r, 1, 3);
+    for (n = 1; n <= 6; n++) {
+        uint8_t *op = fm_op(p, n);
+        if (fm_is_carrier(p, n)) {
+            fm_ratio(op, rnd_chance(r, 50) ? 100 : FAM_IRR[rnd_below(r, 16)]);
+            op[FP_OL] = 99;
+            fm_env(op, 99, rnd_in(r, 12, 25), rnd_in(r, 10, 20), 30, 99, rnd_in(r, 70, 90), 0, 0);   /* long decay */
+        } else {                                     /* the index low at the strike, rising as it dies */
+            fm_ratio(op, FAM_IRR[rnd_below(r, 16)]);
+            op[FP_OL] = (uint8_t)rnd_in(r, 70, 90);
+            fm_env(op, rnd_in(r, 50, 80), rnd_in(r, 10, 20), rnd_in(r, 8, 16), 40, rnd_in(r, 20, 40), rnd_in(r, 70, 90),
+                   rnd_in(r, 85, 99), 0);
+        }
+    }
+    p[FP_FB] = (uint8_t)rnd_in(r, 0, 4);
+}
+/* ALLURE: after fam_held -- the timbre pulsing at 3 .. 12 Hz, the level still (the modulators alone on the LFO) */
+static void fam_allure_post(uint8_t *p, rnd_t *r)
+{
+    int n;
+    for (n = 1; n <= 6; n++)
+        fm_op(p, n)[FP_AMS] = (uint8_t)(fm_is_carrier(p, n) ? 0 : rnd_in(r, 2, 3));
+    p[FP_LFW] = (uint8_t)(rnd_chance(r, 70) ? 1 : 5);   /* (a triangle, or random steps) */
+    p[FP_LFS] = (uint8_t)rnd_in(r, 48, 72);
+    p[FP_LAMD] = (uint8_t)rnd_in(r, 25, 60);
+    p[FP_LFD] = 0;
+}
+
 static void fam_low(uint8_t *p, rnd_t *r)
 {
     fm_ratio(fm_op(p, 1), rnd_chance(r, 50) ? 50 : 100);
@@ -398,6 +578,35 @@ static void fam_generate(fm_patch_t *pt, gen_clock_t *c, uint32_t f, uint32_t se
     case MF_STEAM: fam_modes(p, r, BS_PIPE, rnd_chance(r, 50) ? 500 : 1000, 55, 72); break;
     case MF_SCRAPE: fam_scrape(p, r); break;
     case MF_CORONA: fam_corona(p, r); break;
+    case MF_TRUAX: fam_truax(p, r); break;
+    case MF_FORMANT: fam_formant(p, r); break;
+    case MF_GROWL: fam_growl(p, r); break;
+    case MF_ALLURE:
+        if (rnd_chance(r, 50))
+            fam_truax(p, r);
+        else
+            fam_metal(p, r);
+        break;
+    case MF_HAMMER: case MF_TAM: case MF_CHIME: case MF_GLOW:
+        if (f == MF_HAMMER)
+            fam_hammer(p, r);
+        else if (f == MF_TAM)
+            fam_tam(p, r);
+        else if (f == MF_CHIME)
+            fam_chime(p, r);
+        else
+            fam_glow(p, r);
+        c->gate = (uint8_t)rnd_in(r, 10, 40);
+        c->spread = (uint8_t)rnd_in(r, 10, 60);
+        if (f == MF_GLOW) {                          /* (slow: each strike given time to glow) */
+            c->mode = GK_SCATTER;
+            c->rate = (uint8_t)rnd_in(r, 1, 3), c->jit = (uint8_t)rnd_in(r, 5, 15), c->drift = (uint8_t)rnd_in(r, 10, 30);
+            c->soft = (uint8_t)rnd_in(r, 40, 80), c->accn = 1, c->pat = (uint8_t)rnd_in(r, 5, 20);
+            c->gate = (uint8_t)rnd_in(r, 120, 250);
+        } else
+            fam_scatter(c, rnd_below(r, 4), r);
+        c->click = (uint8_t)rnd_in(r, 2, 10), c->color = (uint8_t)rnd_in(r, 30, 90), c->level = (uint8_t)rnd_in(r, 0, 40);
+        break;
     case MF_ASH:
         fm_gen_drone(p, r);
         p[FP_TRNSP] = 12;                            /* an octave down */
@@ -414,6 +623,8 @@ static void fam_generate(fm_patch_t *pt, gen_clock_t *c, uint32_t f, uint32_t se
     }
     if (!fam_is_struck(f))
         fam_held(p, r);
+    if (f == MF_ALLURE)
+        fam_allure_post(p, r);
     fam_care(p, r);
     fm_shape1(p, PATH_OPEN, r);                      /* (Tonitor's care: no screaming sidebands) */
     fm_name(p, fam_name(f));

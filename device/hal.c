@@ -493,6 +493,17 @@ void hal_link_restart(void)
     hal_relinks++;
     GIE_ENABLE();
 }
+/* 0.63: the time in microseconds (the 1 ms tick and the timer's remainder within it), for the audio's load */
+static uint32_t hal_us(void)
+{
+    uint32_t ms, left;
+    do {
+        ms = ms_now;
+        left = Timer_GetResidualTime(TIMER2);
+    } while (ms != ms_now);
+    return ms * 1000u + (left < 1000u ? 1000u - left : 0u);
+}
+volatile uint32_t hal_busy_us, hal_block_max_us;    /* time spent making blocks (since read), the longest block */
 void hal_render(void)
 {
     static uint32_t seen_xfers, seen_at;
@@ -510,8 +521,12 @@ void hal_render(void)
     }
     for (n = 0; n < 1000u && audio_fn && RING_FRAMES - (ring_w - ring_r) >= HAL_BLOCK; n++) {
         static int16_t lr[2u * HAL_BLOCK];           /* 0.29: to the DSP link (SPIS); the DACs reach no jack */
-        uint32_t i, w = ring_w;
+        uint32_t i, w = ring_w, t0 = hal_us(), dt;
         audio_fn(lr);
+        dt = hal_us() - t0;
+        hal_busy_us += dt;
+        if (dt > hal_block_max_us && dt < 100000u)
+            hal_block_max_us = dt;
         for (i = 0; i < HAL_BLOCK; i++) {
             /* 0.38: x4 (+12 dB), clipped: the synth peaked near -11 dBFS and came out of the ARM very faint */
             int32_t a = lr[2u * i] * SYNTH_GAIN, c = lr[2u * i + 1u] * SYNTH_GAIN;

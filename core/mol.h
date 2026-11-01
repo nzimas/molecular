@@ -4,10 +4,15 @@
 #pragma once
 #include <stdint.h>
 
-/* the generator, Norilsk's 25 effects (fx.c, vendor/norilsk), Tonitor's DELAY and REVERB */
+/* the generator, Norilsk's 25 effects (fx.c, vendor/norilsk), Tonitor's DELAY and REVERB, Molecular's own (atoms.c) */
 enum { AT_GEN, AT_FILTER, AT_FOLD, AT_MULAW, AT_SHIFT, AT_MODAL, AT_STRING, AT_VOWEL, AT_TAPE, AT_REVERSE, AT_SPRING,
        AT_GLITCH, AT_CLOUD, AT_SCREAM, AT_RING, AT_STARVE, AT_CHEB, AT_BANK, AT_SMEAR, AT_DIFFUSE, AT_SLEW, AT_XOR,
-       AT_DUST, AT_WAVESET, AT_XMOD, AT_CHAOS, AT_DELAY, AT_REVERB, AT_N };
+       AT_DUST, AT_WAVESET, AT_XMOD, AT_CHAOS, AT_DELAY, AT_REVERB,
+       AT_SPIRAL, AT_SOURCE, AT_ENVEL, AT_LPG, AT_BARBER, AT_STICK, AT_MORPHO, AT_DISINT,   /* 0.62: atoms.c (kept last:
+                                                                    * a patch holds the kinds by number) */
+       AT_REED, AT_NLF, AT_SUBHARM, AT_SPARK, AT_CONTRAST, AT_BLUR, AT_DOPPLER, AT_GSM, AT_GENDY, AT_INVERT,
+       AT_SQUELCH,                                                  /* 0.63 */
+       AT_N };
 #define MOL_MAXATOM 5u
 #define MOL_NODES (MOL_MAXATOM + 1u)   /* the generator is node 0; a parent always comes before its children */
 #define NOPARENT 0xFFu

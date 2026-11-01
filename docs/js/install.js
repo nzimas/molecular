@@ -33,7 +33,7 @@
         throw new Error("The firmware file did not load intact. Reload the page.");
       fw = { meta, data: new Uint8Array(buf) };
       $("facts").hidden = false;
-      $("f-fw").textContent = "Molecular " + meta.version + " (" + Math.round(meta.size / 1024) + " KB)";
+      $("f-fw").textContent = "Molecular build " + meta.version + " (" + Math.round(meta.size / 1024) + " KB)";
       status("Ready.");
       detail("Connect the pedal, switch it on, then find it.");
     } catch (e) {
@@ -85,7 +85,7 @@
 
   $("agree").addEventListener("change", refresh);
   $("connect").addEventListener("click", connect);
-  $("install").addEventListener("click", () => run("Molecular " + fw.meta.version, [{ tag: "b", data: fw.data }],
+  $("install").addEventListener("click", () => run("Molecular build " + fw.meta.version, [{ tag: "b", data: fw.data }],
     "The pedal restarts into Molecular, already sounding. Hold the right button to start MOTION; the manual has the rest."));
   $("stockfile").addEventListener("change", async e => {
     stock = null;

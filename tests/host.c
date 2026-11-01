@@ -200,9 +200,9 @@ static void test_shapes(void)
             if (fx_heavy(d.shape.node[i].kind))
                 CHECK(!d.shape.node[i].lfo.depth, "seed %u: an LFO on DELAY or REVERB", seed);
             else if (d.shape.node[i].lfo.depth) {
-                uint32_t rm = AT_RM[d.shape.node[i].kind], v = d.shape.node[i].lval;
+                uint32_t kd = d.shape.node[i].kind, v = d.shape.node[i].lval;
                 CHECK(v < 4u && ((FX_LFO_OK[d.shape.node[i].kind] >> v) & 1u), "seed %u: an LFO on a switch", seed);
-                CHECK(v < 4u && d.shape.node[i].lfo.depth * 2 <= RM_HI[rm][v] - RM_LO[rm][v],
+                CHECK(v < 4u && d.shape.node[i].lfo.depth * 2 <= at_hi(kd, v) - at_lo(kd, v),
                       "seed %u: an atom's LFO wider than its value's bounds", seed);
             }
         }
@@ -288,7 +288,7 @@ static void test_atoms(void)
             worst = at_name(kind);
         }
     }
-    printf("atoms: Norilsk's 25 each heard, within full scale, quiet after; the slowest, %s, %.2f us a block here\n",
+    printf("atoms: all 44 each heard, within full scale, quiet after; the slowest, %s, %.2f us a block here\n",
            worst, worst_us);
 }
 
@@ -333,16 +333,11 @@ static void test_families(void)
             gen_clock_t c;
             int32_t pk = 0, strikes = 0, was = 0;
             uint32_t sd = seed * 7919u + f;
-            memset(&c, 0, sizeof c);
             memset(&g, 0, sizeof g);
-            if (f < FF_N)
-                fm_generate(&g.patch, (int32_t)f, sd, FAM_PICK[i].path, GEN_NOW);
-            else
-                fam_generate(&g.patch, &c, f, sd);
-            fm_measure(&g.patch);
+            gen_family(&g, &c, &FAM_PICK[i], sd);
             CHECK(g.patch.family == f, "family %s drawn as %s", fam_name(f), fam_name(g.patch.family));
-            CHECK(fam_is_struck(f) == (c.mode != GK_HOLD && !c.crackle), "%s: struck and its clock disagree",
-                  fam_name(f));
+            CHECK(fam_is_pm(f) || fam_is_struck(f) == (c.mode != GK_HOLD && !c.crackle),
+                  "%s: struck and its clock disagree", fam_name(f));   /* (a physical family: either) */
             g.note[0] = 40, g.note[1] = 47, g.note[2] = 52;
             gen_start(&st, &g, &c, sd);
             for (b = 0; b < 6u * FS / CTL; b++) {
@@ -359,7 +354,7 @@ static void test_families(void)
             CHECK(pk < 8 * Q15, "%s seed %u: peak %d", fam_name(f), seed, pk);   /* (the generator's headroom: held,
                                                       * REVERSE reaches 5 x full scale; the atoms' guards and the
                                                       * leveller take it, as before 0.55) */
-            if (fam_is_struck(f))
+            if (c.mode != GK_HOLD && !c.crackle)
                 CHECK(strikes >= 2, "%s seed %u: struck %d times in 6 s", fam_name(f), seed, strikes);
             heard += pk > 1500;
         }
@@ -561,8 +556,20 @@ static void test_flows(void)
     CHECK(motion_rate() == 6u, "MOTION RATE past its bottom");
     shot("09a3_settings_6");
     app_turn(4, now_ms);
-    press_short();                                      /* back to the molecule, the rate kept */
-    CHECK(app.screen == SC_MOL && mol_d.motion_rate == 30u, "SETTINGS did not keep 30 a minute");
+    press_short();                                      /* the next page: MIX, 50 % to begin with */
+    CHECK(app.screen == SC_SETTINGS && app.page == SET_MIX && mol_mix() == 50u, "the second page is not MIX at 50");
+    shot("09a4_settings_mix");
+    app_turn(-1, now_ms);
+    app_turn(-1, now_ms);
+    run_ms(50);
+    CHECK(mol_mix() == 40u, "MIX %u after two turns down", mol_mix());
+    app_turn(-20, now_ms);
+    run_ms(50);
+    CHECK(mol_mix() == 0u, "MIX below 0");
+    shot("09a5_settings_mix_0");
+    app_turn(8, now_ms);
+    press_short();                                      /* back to the molecule, both kept */
+    CHECK(app.screen == SC_MOL && mol_d.motion_rate == 30u && mol_mix() == 40u, "SETTINGS did not keep 30 a minute, 40 %%");
     {                                                   /* MOTION: the right button held */
         mol_shape_t before = mol_d.shape;
         uint32_t t, ev0 = mot.events, moved = 0, changed = 0, shapes0 = mol_shapes;
@@ -616,7 +623,8 @@ static void test_flows(void)
             }
             check_shape(&mol_d.shape, t, "moving fast", 0);
         }
-        CHECK(mot.events - ev0 >= 200u, "MOTION at 120 a minute: %u events", mot.events - ev0);
+        CHECK(mot.events - ev0 >= 180u, "MOTION at 120 a minute: %u events", mot.events - ev0);   /* (a prune's fade
+                                                      * holds the next event back about a second) */
         run_ms(400);
         CHECK(ATOMIC_GET(mol_phase) == MP_RUN || mol_pending, "MOTION left the molecule silent");
         printf("motion: %u events, %u shapes, %u atoms now\n", mot.events - ev0, mol_shapes - shapes0,

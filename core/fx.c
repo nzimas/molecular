@@ -17,15 +17,24 @@ static uint32_t fx_place(const void *st) { return (uint32_t)((const uint8_t *)st
 
 static const char *const AT_SYM[AT_N] = {"FM", "FL", "FO", "MU", "SH", "MO", "ST", "VO", "TA", "RS", "SP", "GL",
                                          "CL", "SC", "RI", "SV", "CB", "BK", "SM", "DF", "SW", "XO", "DS", "WS",
-                                         "XM", "CS", "DL", "RV"};
+                                         "XM", "CS", "DL", "RV",
+                                         "SR", "SO", "EN", "LG", "BA", "SK", "MP", "DI",    /* (atoms.c's) */
+                                         "RD", "NL", "SU", "PK", "CT", "BL", "DO", "GS", "GY", "IN", "SQ"};
 /* each kind's effect in Norilsk's list */
 static const uint8_t AT_RM[AT_N] = {0, RM_FLT, RM_FLD, RM_MU, RM_SHF, RM_MDL, RM_STR, RM_VOW, RM_TAP, RM_RVS, RM_SPR,
                                     RM_GLT, RM_CLD, RM_SCR, RM_RNG, RM_STV, RM_CHB, RM_BNK, RM_SMR, RM_DIF, RM_SLW,
-                                    RM_XOR, RM_DST, RM_WST, RM_XMD, RM_CHS, RM_DLY, RM_REV};
-AINL const char *at_name(uint32_t kind) { return kind == AT_GEN ? "FM" : RM_NAME[AT_RM[kind]]; }
+                                    RM_XOR, RM_DST, RM_WST, RM_XMD, RM_CHS, RM_DLY, RM_REV};   /* (atoms.c's: none) */
+AINL int at_own(uint32_t kind) { return kind >= AT_SPIRAL; }                 /* one of atoms.c's */
+AINL const char *at_name(uint32_t kind) { return kind == AT_GEN ? "FM" : at_own(kind) ? NX_NAME[kind - AT_SPIRAL] : RM_NAME[AT_RM[kind]]; }
+/* the bounds a draw keeps value v in */
+AINL int32_t at_lo(uint32_t kind, uint32_t v) { return at_own(kind) ? NX_LO[kind - AT_SPIRAL][v] : RM_LO[AT_RM[kind]][v]; }
+AINL int32_t at_hi(uint32_t kind, uint32_t v) { return at_own(kind) ? NX_HI[kind - AT_SPIRAL][v] : RM_HI[AT_RM[kind]][v]; }
 AINL int fx_heavy(uint32_t kind) { return kind == AT_DELAY || kind == AT_REVERB; }
 /* the arena an atom takes (the heavy ones keep their own lines: none) */
-AINL uint32_t fx_bytes(uint32_t kind) { return kind == AT_GEN || fx_heavy(kind) ? 0u : rm_size(AT_RM[kind]); }
+AINL uint32_t fx_bytes(uint32_t kind)
+{
+    return kind == AT_GEN || fx_heavy(kind) ? 0u : at_own(kind) ? (nx_size(kind - AT_SPIRAL) + 7u) & ~7u : rm_size(AT_RM[kind]);
+}
 
 typedef struct {
     uint32_t at;                 /* its state's place in the arena */
@@ -38,6 +47,9 @@ typedef struct {
 static uint32_t lfo_draw_inc(rnd_t *r)
 {
     int32_t chz = (int32_t)((2u * exp2_q16(rnd_in(r, 0, 408289))) >> 16);   /* centi-hertz: 2 x 2^(0 .. 6.23) */
+    if (rnd_chance(r, 15))                           /* 0.64: an allure now and then (Schaeffer's vibrato, Wishart's
+                                                      * tremolo): 3 .. 12 Hz, a living wobble rather than a drift */
+        chz = (int32_t)((300u * exp2_q16(rnd_in(r, 0, 131072))) >> 16);
     return (uint32_t)chz * 31165u;                                         /* 2^32 / (100 x 1378.125) */
 }
 
@@ -66,6 +78,11 @@ static const uint8_t FX_LFO_OK[AT_N] = {
     0x0, 0xE, 0xF, 0xD, 0xB, 0xE, 0xE, 0xF, 0xF, 0xF, 0xF,   /* FM FILTER FOLD MULAW SHIFT MODAL STRING VOWEL TAPE REVERSE SPRING */
     0xE, 0xB, 0xF, 0xF, 0xF, 0xF, 0xA, 0xF, 0xF, 0xF, 0x9,   /* GLITCH CLOUD SCREAM RING STARVE CHEB BANK SMEAR DIFFUSE SLEW XOR */
     0xF, 0x8, 0xE, 0xF, 0x0, 0x0,                            /* DUST WAVESET XMOD CHAOS DELAY REVERB */
+    0xF, 0x7, 0xF, 0xF, 0xF, 0xF, 0xF, 0xB,                  /* SPIRAL SOURCE (not its order) ENVEL LPG BARBER STICK MORPHO
+                                                              * DISINTEGRATE (not its layers) */
+    0xF, 0xF, 0xC, 0xF, 0xD, 0xF, 0xF, 0xE, 0xE, 0xF, 0xF,   /* REED NLF SUBHARM (not its divisors) SPARK CONTRAST (not
+                                                              * its trace) BLUR DOPPLER GSM (not its rate) GENDY (not its
+                                                              * corners) INVERT SQUELCH */
 };
 
 /* an atom's LFO drawn anew: one of the values it may move, swung up to half its bounds' span either way, at the
@@ -84,7 +101,7 @@ static void fx_draw_lfo(mol_node_t *a, rnd_t *r)
     for (k = 0; k < 4u; k++)
         if (((ok >> k) & 1u) && !pick--)
             a->lval = (uint8_t)k;
-    span = RM_HI[AT_RM[a->kind]][a->lval] - RM_LO[AT_RM[a->kind]][a->lval];
+    span = at_hi(a->kind, a->lval) - at_lo(a->kind, a->lval);
     a->lfo.inc = lfo_draw_inc(r);
     a->lfo.shape = (uint8_t)rnd_below(r, 3);
     a->lfo.depth = (int8_t)(span < 2 ? 0 : rnd_in(r, span / 6, span / 2));
@@ -104,8 +121,13 @@ static void fx_draw_values(mol_node_t *a, rnd_t *r)
     for (k = 0; k < 4u; k++)
         if (fx_heavy(a->kind))
             a->p[k] = (int16_t)rnd_in(r, HEAVY[a->kind == AT_REVERB][k][0], HEAVY[a->kind == AT_REVERB][k][1]);
-        else
-            a->p[k] = (int16_t)rnd_in(r, RM_LO[AT_RM[a->kind]][k], RM_HI[AT_RM[a->kind]][k]);
+        else if ((FX_LFO_OK[a->kind] >> k & 1u) && rnd_chance(r, 40)) {
+            /* 0.64: two times in five a continuous value drawn towards its bounds' ends (an arcsine draw: where an
+             * effect's character is, rather than its middle ground); a switch or a coarse step stays uniform */
+            int32_t lo = at_lo(a->kind, k), hi = at_hi(a->kind, k), u = sin_ph((uint32_t)rnd_below(r, 32768) << 16);
+            a->p[k] = (int16_t)(lo + ((hi - lo) * ((Q15 - u) >> 1) >> 15));   /* (1 - cos(pi t)) / 2 of the span */
+        } else
+            a->p[k] = (int16_t)rnd_in(r, at_lo(a->kind, k), at_hi(a->kind, k));
 }
 
 /* the heavy atoms' values passed on (main loop: their own parameter functions cook them) */
@@ -176,7 +198,7 @@ static FAST void fx_block(fx_state_t *s, const mol_node_t *a, const int32_t *in,
     if (a->lfo.depth) {                              /* its LFO, within the bounds its effect keeps the value in */
         uint32_t v = a->lval & 3u;
         int32_t m = a->p[v] + ((lfo_val(&s->lr, &a->lfo, &s->r) * a->lfo.depth) >> 15);
-        p[v] = (uint8_t)clampi(m, RM_LO[AT_RM[a->kind]][v], RM_HI[AT_RM[a->kind]][v]);
+        p[v] = (uint8_t)clampi(m, at_lo(a->kind, v), at_hi(a->kind, v));
     }
     switch (a->kind) {
     case AT_FILTER: m_flt(p, (m_flt_t *)st, out); break;
@@ -204,7 +226,11 @@ static FAST void fx_block(fx_state_t *s, const mol_node_t *a, const int32_t *in,
     case AT_WAVESET: m_wst(p, (m_wst_t *)st, out); break;
     case AT_XMOD: m_xmd(p, (m_xmd_t *)st, out); break;
     case AT_CHAOS: m_chs(p, (m_chs_t *)st, out); break;
-    default: return;
+    default:
+        if (!at_own(a->kind))
+            return;
+        nx_block(a->kind - AT_SPIRAL, p, st, out);           /* (atoms.c's) */
+        break;
     }
     fx_guard(s, out);
 }

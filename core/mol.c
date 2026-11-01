@@ -37,7 +37,8 @@ typedef struct {
     int32_t pan_l[MOL_NODES], pan_r[MOL_NODES];   /* the edge atoms' gains, Q15 (equal power) */
     gen_clock_t clock;           /* (0.55, so last: an older patch loads with none) */
     uint8_t motion_rate;         /* 0.58: MOTION's events a minute (0: an older patch, MOTION_RATE_DEFAULT) */
-    uint8_t rsv[3];
+    uint8_t mix;                 /* 0.64: the atoms' share of the sound, % + 1 (0: an older patch, 50 %) */
+    uint8_t rsv[2];
 } mol_design_t;
 
 static mol_design_t mol_d;
@@ -74,7 +75,9 @@ AINL int32_t node_r(const mol_node_t *n) { return n->kind == AT_GEN ? R_GEN : R_
 
 /* ------------------------------------------------------------ the shape --- */
 static const uint8_t MOL_KW[AT_N] = {0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                                    8, 10};                           /* the kinds' weights: DELAY, REVERB often */
+                                    8, 10,                            /* the kinds' weights: DELAY, REVERB often */
+                                    3, 3, 3, 3, 3, 3, 3, 3,           /* (atoms.c's) */
+                                    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
 /* a kind for one more atom beside those in s: one DELAY, one REVERB at most, within the atoms' arena (AT_GEN: none) */
 static uint32_t mol_draw_kind(const mol_shape_t *s, uint32_t upto, rnd_t *r)
 {
@@ -419,9 +422,10 @@ static int mol_poll(void)
         dl_init();
         rv_init();
     } else {
-        uint8_t rate = mol_d.motion_rate;            /* (MOTION's rate carried on to the new molecule) */
+        uint8_t rate = mol_d.motion_rate, mix = mol_d.mix;   /* (MOTION's rate and the mix carried on) */
         mol_draw(&mol_d, mol_pending_seed);
         mol_d.motion_rate = rate;
+        mol_d.mix = mix;
         dl_init();
         rv_init();
     }
@@ -637,7 +641,9 @@ AINL int32_t soft_limit(int32_t x)                   /* untouched below 0.75, th
     return x < 0 ? -a : a;
 }
 
-#define MOL_WET 16384                    /* the atoms' share of the sound, Q15: half */
+/* the atoms' share of the sound, Q15 (the patch's MIX, % + 1; 0: an older patch, half), and as it glides */
+static uint32_t mol_mix(void) { return mol_d.mix ? mol_d.mix - 1u : 50u; }
+static int32_t mol_wet = Q15 / 2;
 
 /* one block (CTL frames) into lr, interleaved stereo int16 */
 static FAST void mol_block(int16_t *lr)
@@ -723,11 +729,12 @@ static FAST void mol_block(int16_t *lr)
             buf[k][i] = (wl[i] + wr[i]) >> 1;        /* the meter: what the heavy atom adds */
         }
     }
-    for (i = 0; i < CTL; i++) {                      /* 0.53: the effects half wet: the engine's own sound, centred
-                                                      * (equal power), mixed in as much as the atoms' tree */
+    mol_wet += ((int32_t)(mol_mix() * Q15 / 100u) - mol_wet) >> 6;   /* (0.64: MIX, gliding: no step) */
+    for (i = 0; i < CTL; i++) {                      /* 0.53: the effects half wet (0.64: the patch's MIX): the
+                                                      * engine's own sound, centred (equal power), and the atoms' tree */
         int32_t c = mulq15(buf[0][i], 23170);
-        l[i] = mulq15(l[i], MOL_WET) + mulq15(c, Q15 - MOL_WET);
-        r[i] = mulq15(r[i], MOL_WET) + mulq15(c, Q15 - MOL_WET);
+        l[i] = mulq15(l[i], mol_wet) + mulq15(c, Q15 - mol_wet);
+        r[i] = mulq15(r[i], mol_wet) + mulq15(c, Q15 - mol_wet);
     }
     for (k = 0; k < s->n; k++) {                     /* the meters: a peak that falls ~20 dB a second */
         int32_t pk = 0, m = mol_meter.level[k];
