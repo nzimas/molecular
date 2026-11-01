@@ -9,8 +9,8 @@
 <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css?v=2b7f802604">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css?v=6e9b406d18">
 </head>
 <body>
 <div class="layout">
@@ -19,7 +19,6 @@
       <a class="brand" href="./"><img src="assets/mark.svg" alt="">MOLECULAR</a>
       <button class="menu-btn" type="button" aria-label="Menu" aria-controls="site-nav" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
-    <div class="layers" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
     <nav id="site-nav" aria-label="Site">
       <button class="menu-close" type="button" aria-label="Close the menu">&times;</button>
       <a href="./" aria-current="page">Home</a>
@@ -42,13 +41,17 @@
     <main>
 <img class="logo" src="assets/logo-dark.svg" alt="Molecular" width="1146" height="200">
 <div class="hero">
-  <h1>A firmware for the Sonicake Pocket Master for the discovery of sound</h1>
-  <p class="lede">For electroacoustic, acousmatic and experimental music. Molecular does not wait for instructions: it
-    proposes sounds, and you answer them. The music comes out of that conversation.</p>
-  <div class="cta">
-    <a class="btn primary" href="install.html">Install via browser</a>
-    <a class="btn" href="manual.html">Read the manual</a>
+  <div>
+    <p class="label">For the Sonicake Pocket Master</p>
+    <h1>A firmware for the discovery of sound</h1>
+    <p class="lede">For electroacoustic, acousmatic and experimental music. Molecular does not wait for instructions:
+      it proposes sounds, and you answer them. The music comes out of that conversation.</p>
+    <div class="cta">
+      <a class="btn primary" href="install.html">Install via browser</a>
+      <a class="btn" href="manual.html">Read the manual</a>
+    </div>
   </div>
+  <canvas class="drift" width="600" height="600" aria-label="A molecule in motion, as the pedal moves it" role="img"></canvas>
 </div>
 
 <h2>A conversation, not a control panel</h2>
@@ -68,15 +71,17 @@
 <h2>Motion</h2>
 <p>Hold the right button and the molecule starts to move. It does two things at once, as real molecules do.</p>
 <dl class="features">
-  <dt>Thermal motion</dt>
+  
+  <div><dt>Thermal motion</dt>
   <dd>Every atom drifts on a path that turns smoothly. Bonds stretch and pull like springs, and atoms that come too
     close push each other away. Each atom's place on the screen is its place in the stereo field, so the sound
-    drifts as the picture does.</dd>
-  <dt>Rearrangements</dt>
+    drifts as the picture does.</dd></div>
+  
+  <div><dt>Rearrangements</dt>
   <dd>At the <b>motion rate</b> you set, from 6 to 120 events a minute, the molecule changes. It is rewired, so the
     same atoms form new bonds, as in a chemical rearrangement. An atom is added and swells into the molecule, or
     an atom shrinks away and leaves it. Or an atom's values move somewhere new. The generator, the voice, is never
-    touched.</dd>
+    touched.</dd></div>
 </dl>
 <p>Nothing jumps. A new bond draws its atoms together over a second or two, and the sound crossfades along it. An
   arriving atom comes in dry and turns wet. A leaving atom fades from the mix before it goes. New values glide
@@ -90,26 +95,33 @@
 
 <h2>Features</h2>
 <dl class="features">
-  <dt>The generator</dt>
+  
+  <div><dt>The generator</dt>
   <dd>Six-operator FM, with patches drawn from 40 families: Tonitor's bells, drones, choirs and spectres, harsh
     textures, held sounds such as HUM, SWARM, MODES and CORONA, and struck metal (ANVIL, RIVET, GEARS, FORGE and
-    others) played on unstable, unpredictable clocks.</dd>
-  <dt>Atoms</dt>
+    others) played on unstable, unpredictable clocks.</dd></div>
+  
+  <div><dt>Atoms</dt>
   <dd>27 effects: Norilsk's 25 (filters, folders, resonators, tape, spring, glitch, granular clouds, Chebyshev
-    harmonics, XOR, wavesets, a chaotic oscillator and more), with a delay and a reverb.</dd>
-  <dt>The molecule</dt>
+    harmonics, XOR, wavesets, a chaotic oscillator and more), with a delay and a reverb.</dd></div>
+  
+  <div><dt>The molecule</dt>
   <dd>Up to five atoms in a tree: each atom takes its parent's sound, and the outermost atoms are heard, spread
     across the stereo field as they are across the screen. Half of what you hear is the generator itself, half the
-    atoms.</dd>
-  <dt>LFOs</dt>
+    atoms.</dd></div>
+  
+  <div><dt>LFOs</dt>
   <dd>The generator's four macros and one value of each atom move on their own LFOs, drawn anew with a held left
-    button.</dd>
-  <dt>Motion</dt>
-  <dd>The molecule moving and rearranging itself, at a rate saved with each patch.</dd>
-  <dt>Patches</dt>
-  <dd>Twelve slots, kept in the pedal's flash: the molecule exactly as it sounds, its motion rate included.</dd>
-  <dt>Accessible</dt>
-  <dd>Few words, very large type, high contrast, a colour for each family of effects.</dd>
+    button.</dd></div>
+  
+  <div><dt>Motion</dt>
+  <dd>The molecule moving and rearranging itself, at a rate saved with each patch.</dd></div>
+  
+  <div><dt>Patches</dt>
+  <dd>Twelve slots, kept in the pedal's flash: the molecule exactly as it sounds, its motion rate included.</dd></div>
+  
+  <div><dt>Accessible</dt>
+  <dd>Few words, very large type, high contrast, a colour for each family of effects.</dd></div>
 </dl>
 
 <h2>The controls</h2>
@@ -148,6 +160,7 @@
     </footer>
   </div>
 </div>
+<script src="js/drift.js?v=d6406f286b"></script>
 <script src="js/menu.js?v=96a5f68d8e"></script>
 </body>
 </html>

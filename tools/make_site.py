@@ -46,7 +46,7 @@ def page(name, title, body, scripts):
 <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/site.css?v={css}">
 </head>
 <body>
@@ -56,7 +56,6 @@ def page(name, title, body, scripts):
       <a class="brand" href="./"><img src="assets/mark.svg" alt="">MOLECULAR</a>
       <button class="menu-btn" type="button" aria-label="Menu" aria-controls="site-nav" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
-    <div class="layers" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
     <nav id="site-nav" aria-label="Site">
       <button class="menu-close" type="button" aria-label="Close the menu">&times;</button>
 {nav}
@@ -84,7 +83,7 @@ def page(name, title, body, scripts):
 
 
 def main():
-    scripts = {"install.html": ["pmota.js", "install.js"]}
+    scripts = {"install.html": ["pmota.js", "install.js"], "index.html": ["drift.js"]}
     for f, _, title in PAGES:
         body = open(os.path.join(ROOT, "site", SRC.get(f, f))).read().rstrip()
         open(os.path.join(ROOT, "docs", f), "w").write(page(f, title, body, scripts.get(f, [])))
