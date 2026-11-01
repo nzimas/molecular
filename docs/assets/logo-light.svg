@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1146 200" role="img" aria-label="Molecular">
+<title>Molecular</title>
+<circle cx="100" cy="100" r="88" fill="none" stroke="#0E0D0D" stroke-width="8"/>
+<line x1="70" y1="114" x2="116" y2="88" stroke="#0E0D0D" stroke-width="7"/>
+<line x1="116" y1="88" x2="116" y2="36" stroke="#0E0D0D" stroke-width="7"/>
+<line x1="116" y1="88" x2="162" y2="114" stroke="#0E0D0D" stroke-width="7"/>
+<line x1="162" y1="114" x2="145.979" y2="141.863" stroke="#0E0D0D" stroke-width="5" stroke-dasharray="4 5"/>
+<circle cx="122" cy="163" r="4.5" fill="#B4A0FF" opacity="0.7"/>
+<circle cx="110" cy="169" r="3.5" fill="#B4A0FF" opacity="0.45"/>
+<circle cx="100" cy="174" r="2.5" fill="#B4A0FF" opacity="0.25"/>
+<circle cx="70" cy="114" r="24" fill="#FFE63C"/>
+<circle cx="116" cy="88" r="16" fill="#FF64D2"/>
+<circle cx="116" cy="36" r="16" fill="#78FF78"/>
+<circle cx="162" cy="114" r="16" fill="#50DCFF"/>
+<circle cx="139" cy="154" r="11" fill="none" stroke="#B4A0FF" stroke-width="5"/>
+<path d="M 258 150 V 52 L 294 114 L 330 52 V 150" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="bevel"/>
+<circle cx="410" cy="100" r="42" fill="none" stroke="#0E0D0D" stroke-width="16"/>
+<circle cx="410" cy="100" r="11" fill="#FFE63C"/>
+<path d="M 490 50 V 142 H 544" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 632 58 H 574 V 142 H 632" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 574 100 H 624" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 736.174 73.0029 A 42 42 0 1 0 736.174 126.997" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 776 50 V 110 A 32 32 0 0 0 840 110 V 50" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 878 50 V 142 H 932" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 958 150 L 998 54 L 1038 150" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="bevel"/>
+<path d="M 976 116 H 1020" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 1072 150 V 58 H 1101 A 23 23 0 0 1 1101 104 H 1072" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+<path d="M 1102 108 L 1136 150" fill="none" stroke="#0E0D0D" stroke-width="16" stroke-linejoin="miter"/>
+</svg>

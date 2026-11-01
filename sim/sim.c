@@ -16,6 +16,43 @@
 
 #define ZOOM 4
 
+/* the patches' store: one file, a 4 KB record a slot, in SDL's place for the user's files */
+#define SLOT_BYTES 4096u
+static FILE *patch_file(const char *mode)
+{
+    static char path[512];
+    if (!path[0]) {
+        char *dir = SDL_GetPrefPath("molecular", "sim");
+        snprintf(path, sizeof path, "%spatches.bin", dir ? dir : "");
+        SDL_free(dir);
+    }
+    return fopen(path, mode);
+}
+static int plat_patch_read(uint32_t slot, void *buf, uint32_t n)
+{
+    FILE *f = patch_file("rb");
+    int ok;
+    if (!f)
+        return -1;
+    ok = n <= SLOT_BYTES && !fseek(f, (long)(slot * SLOT_BYTES), SEEK_SET) && fread(buf, 1, n, f) == n;
+    fclose(f);
+    return ok ? 0 : -1;
+}
+static int plat_patch_write(uint32_t slot, const void *buf, uint32_t n)
+{
+    static uint8_t rec[SLOT_BYTES];
+    FILE *f = patch_file("r+b");
+    int ok;
+    if (!f)
+        f = patch_file("w+b");
+    if (!f || n > SLOT_BYTES)
+        return -1;
+    memset(rec, 0xFF, sizeof rec);
+    memcpy(rec, buf, n);
+    ok = !fseek(f, (long)(slot * SLOT_BYTES), SEEK_SET) && fwrite(rec, 1, sizeof rec, f) == sizeof rec;
+    return fclose(f) || !ok ? -1 : 0;
+}
+
 static void audio_cb(void *u, Uint8 *stream, int len)
 {
     int16_t *out = (int16_t *)stream;
@@ -66,8 +103,8 @@ int main(void)
                 int down = e.type == SDL_KEYDOWN;
                 switch (e.key.keysym.sym) {
                 case SDLK_ESCAPE: run = 0; break;
-                case SDLK_LEFT: if (down) app_left(now); break;
-                case SDLK_RIGHT: if (down) app_right(now); break;
+                case SDLK_LEFT: down ? app_left(now) : app_left_up(now); break;
+                case SDLK_RIGHT: down ? app_right(now) : app_right_up(now); break;
                 case SDLK_UP: if (down) app_turn(1, now); break;
                 case SDLK_DOWN: if (down) app_turn(-1, now); break;
                 case SDLK_SPACE:

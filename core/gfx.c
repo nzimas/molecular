@@ -78,16 +78,17 @@ static void gfx_ring(int32_t cx, int32_t cy, int32_t r0, int32_t r1, int32_t gap
 /* a line t pixels thick (a square brush along Bresenham's path) */
 static void gfx_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t t, uint16_t c)
 {
-    int32_t dx = absi(x1 - x0), dy = -absi(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy, h = t / 2;
+    int32_t dx = absi(x1 - x0), dy = -absi(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, e = dx + dy, e2, h = t / 2;
     for (;;) {
         gfx_rect(x0 - h, y0 - h, t, t, c);
         if (x0 == x1 && y0 == y1)
             break;
-        if (2 * e >= dy) {
+        e2 = 2 * e;                               /* (once a step: both tests read the same error) */
+        if (e2 >= dy) {
             e += dy;
             x0 += sx;
         }
-        if (2 * e <= dx) {
+        if (e2 <= dx) {
             e += dx;
             y0 += sy;
         }

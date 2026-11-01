@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# Runs an Andes nds32le-elf tool (mculib v3f: ABI2 FP+, as the MVsilicon SDK's libraries; GCC 4.9.4) in an amd64
+# Linux container, with a folder mounted at its own path so paths work as on the host.
+#   tools/nds make -C device
+# NDS_MOUNT      the folder mounted: it must hold this tree, the SDK and the toolchain (default: the folder above this
+#                tree)
+# NDS_TOOLCHAIN  the unpacked nds32le-elf-mculib-v3f (default: $NDS_MOUNT/toolchain/nds32le-elf-mculib-v3f)
+# The image: docker build --platform linux/amd64 -t sonicake-nds -f tools/toolchain.Dockerfile tools
+here=$(cd "$(dirname "$0")/.." && pwd)
+M=${NDS_MOUNT:-$(dirname "$here")}
+T=${NDS_TOOLCHAIN:-$M/toolchain/nds32le-elf-mculib-v3f}
+exec docker run --rm --platform linux/amd64 -v "$M:$M" -w "$(pwd)" -e PATH="$T/bin:/usr/bin:/bin" sonicake-nds "$@"

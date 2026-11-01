@@ -1,0 +1,74 @@
+<h1>Install Molecular</h1>
+<p>This page installs Molecular on a Sonicake Pocket Master connected to this computer by USB. It works in a desktop
+  <b>Chrome, Edge or Opera</b> (not Safari or Firefox). It talks to the pedal directly over USB MIDI: nothing is
+  uploaded anywhere.</p>
+
+<div class="warn">
+  <p><b>Read this first.</b> Molecular is an unofficial firmware, not made, endorsed or supported by Sonicake.
+    Installing it replaces the Pocket Master's main program and <b>may void any warranty that applies to your
+    device</b>. The software comes with no warranty of any kind; you install it entirely at your own risk.
+    <a href="https://github.com/nzimas/molecular#disclaimer">Full disclaimer</a>.</p>
+</div>
+
+<div class="panel" aria-live="polite">
+  <p class="status" id="status">Loading the firmware…</p>
+  <p class="detail" id="detail"></p>
+  <dl class="dev" id="facts" hidden>
+    <dt>Firmware</dt><dd id="f-fw"></dd>
+    <dt>Your pedal</dt><dd id="f-dev">not connected</dd>
+  </dl>
+  <div class="bar" id="bar" hidden><div></div></div>
+
+  <label class="check"><input type="checkbox" id="agree">
+    <span>I have read the warning and the disclaimer. I understand that installing Molecular may void my Pocket
+      Master's warranty and that I install it at my own risk.</span></label>
+
+  <div class="cta">
+    <button class="btn" id="connect" disabled>Find my Pocket Master</button>
+    <button class="btn primary" id="install" disabled>Install Molecular</button>
+  </div>
+</div>
+
+<h2>Before you start</h2>
+<ol class="steps">
+  <li>Your Pocket Master should run Sonicake's firmware <b>1.3.3</b>, or Molecular already. Molecular uses the effects
+    processor's firmware that comes with 1.3.3. On an older version, update it with Sonicake's app first, or install
+    the 1.3.3 file below.</li>
+  <li>Use a USB cable that carries <b>data</b> (some carry power only), plugged straight into the computer. Switch
+    the pedal on.</li>
+  <li>Close any other program using MIDI: a DAW, or Sonicake's own app.</li>
+  <li>When the browser asks to let this page control MIDI devices, allow it: the update is sent as MIDI
+    system-exclusive messages.</li>
+</ol>
+
+<h2>What happens</h2>
+<p>The page asks the pedal to restart into its <b>update mode</b>, a small loader of Sonicake's that an update never
+  writes. The pedal leaves USB for a moment and comes back. Then Molecular is written, which takes under a minute,
+  and the pedal restarts into Molecular, already sounding.</p>
+<p>Only the pedal's main program is replaced. The effects processor's firmware, the factory presets and the
+  loader stay exactly as Sonicake shipped them.</p>
+
+<h2>If something goes wrong</h2>
+<p>Stopped part-way? Reload this page and install again. The pedal waits in its update mode, its screen dark, and
+  this page finds it there. Because the loader is never written, an interrupted install can always be run again.</p>
+<p>The pedal can also be put in update mode by hand. From Molecular, hold <b>both side buttons for 3 seconds</b>:
+  the screen goes dark and the pedal waits. Switching it off leaves update mode, and the firmware that was there
+  starts again.</p>
+
+<h2>Back to Sonicake's firmware</h2>
+<p>Download the Pocket Master firmware file (for example <code>Pocket_Master_Firmware_V1.3.3.bin</code>) from
+  Sonicake's website, choose it here and install it. The whole file is sent to the pedal as Sonicake's own app
+  would send it; it is read on this computer only.</p>
+<div class="panel">
+  <label class="file">Sonicake firmware file: <input type="file" id="stockfile" accept=".bin"></label>
+  <p class="detail" id="stockinfo"></p>
+  <div class="cta">
+    <button class="btn" id="stockinstall" disabled>Install this firmware</button>
+  </div>
+</div>
+
+<p>Prefer the command line? <a href="https://github.com/nzimas/molecular#building-from-source">Build and install
+  from source</a>.</p>
+<p class="note">The installer (<code>js/pmota.js</code>) is Molecular's own, written from its notes on the pedal's
+  update protocol, GPL-3.0. The firmware it installs is GPL-3.0; its source is <a
+  href="https://github.com/nzimas/molecular">on GitHub</a>.</p>

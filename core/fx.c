@@ -1,51 +1,111 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * MOLECULAR: the atoms' effects. Each atom has four values, 0 .. 100 (mol_node_t.p), read by the audio every block:
+ * MOLECULAR: the atoms' effects. Norilsk's 25 (vendor/norilsk/effects.c, unchanged: FILTER .. CHAOS, each with its
+ * four values 0 .. 100 and the bounds a draw keeps them in) and Tonitor's DELAY and REVERB (vendor/tonitor).
  *
- *   FILTER  cutoff (40 Hz .. 12 kHz), resonance, type (low / band / high-pass), sweep depth (a slow sweep, ~0.03 Hz, up to 1.5 octaves)
- *   FOLD    drive (1 .. 8 times), symmetry, mix
- *   RING    carrier frequency (20 Hz .. 2 kHz), mix
- *   CRUSH   bit reduction (16 .. 3 bits), sample-rate reduction (hold 1 .. 32 samples), mix
- *   CHORUS  rate (0.1 .. 3 Hz), depth (0.5 .. 15 ms), mix, feedback
- *   DELAY   time, feedback, damping, mix   (Tonitor's master delay: vendor/tonitor/delay.c)
- *   REVERB  size, decay, damping, mix      (Tonitor's plate: vendor/tonitor/reverb.c)
+ * Norilsk's effects work on a mono block in place, each with a state of its own: here every atom's state is a piece
+ * of one arena (FX_ARENA), handed out as the molecule is drawn (a molecule is drawn to fit: fx_bytes) and cleared
+ * before it sounds. Each atom's output passes Norilsk's guard (a peak rider to half scale, rack.c rm_guard), then
+ * full scale at most.
+ * MODAL, STRING and BANK are tuned to the generator's root (rack_root).
  *
  * DELAY and REVERB are the heavy atoms: one of each at most (their lines are single, 44 and 43 KB) and only at the
  * molecule's edge, where they take a mono input and add a stereo output. The others are mono in, mono out. */
 
-#define FX_CH_N 2048u            /* the chorus's line: 46 ms */
-#define FX_CH_MAX 2u             /* two choruses at most (their lines are in the pool) */
-static int16_t fx_line[FX_CH_MAX][FX_CH_N] POOL;
+#define FX_ARENA 65536u          /* the atoms' memory: the largest atoms (TAPE, REVERSE) take 20 KB each */
+static uint8_t fx_arena[FX_ARENA] POOL __attribute__((aligned(8)));
+static uint32_t fx_place(const void *st) { return (uint32_t)((const uint8_t *)st - fx_arena); }
 
-static const char *const AT_SYM[AT_N] = {"FM", "FL", "FO", "RG", "CR", "CH", "DL", "RV"};
-static const char *const AT_NAME[AT_N] = {"FM", "FILTER", "FOLD", "RING", "CRUSH", "CHORUS", "DELAY", "REVERB"};
+static const char *const AT_SYM[AT_N] = {"FM", "FL", "FO", "MU", "SH", "MO", "ST", "VO", "TA", "RS", "SP", "GL",
+                                         "CL", "SC", "RI", "SV", "CB", "BK", "SM", "DF", "SW", "XO", "DS", "WS",
+                                         "XM", "CS", "DL", "RV"};
+/* each kind's effect in Norilsk's list */
+static const uint8_t AT_RM[AT_N] = {0, RM_FLT, RM_FLD, RM_MU, RM_SHF, RM_MDL, RM_STR, RM_VOW, RM_TAP, RM_RVS, RM_SPR,
+                                    RM_GLT, RM_CLD, RM_SCR, RM_RNG, RM_STV, RM_CHB, RM_BNK, RM_SMR, RM_DIF, RM_SLW,
+                                    RM_XOR, RM_DST, RM_WST, RM_XMD, RM_CHS, RM_DLY, RM_REV};
+AINL const char *at_name(uint32_t kind) { return kind == AT_GEN ? "FM" : RM_NAME[AT_RM[kind]]; }
 AINL int fx_heavy(uint32_t kind) { return kind == AT_DELAY || kind == AT_REVERB; }
+/* the arena an atom takes (the heavy ones keep their own lines: none) */
+AINL uint32_t fx_bytes(uint32_t kind) { return kind == AT_GEN || fx_heavy(kind) ? 0u : rm_size(AT_RM[kind]); }
 
 typedef struct {
-    svf_t svf;
-    svf_c c;
-    uint32_t ph;                 /* FILTER's sweep, RING's carrier, CHORUS's LFO */
-    int32_t dcx, dcy;            /* FOLD's DC blocker */
-    int32_t hold, hold_n;        /* CRUSH's held sample and the samples left */
-    uint32_t w;                  /* CHORUS's write index */
-    uint8_t line;                /* CHORUS's line */
+    uint32_t at;                 /* its state's place in the arena */
+    int32_t env, g;              /* the guard: the peak it follows, its gain (Q15) */
+    lfo_run_t lr;                /* its LFO */
+    rnd_t r;                     /* .. and that LFO's smooth random draws */
 } fx_state_t;
 
-/* each kind's values drawn anew: the ranges keep every atom musical (no runaway feedback, no ear-piercing rings) */
+/* an LFO's rate, drawn: 0.02 .. 1.5 Hz on a log scale, as a phase step a block (Hz x 2^32 / (FS / CTL)) */
+static uint32_t lfo_draw_inc(rnd_t *r)
+{
+    int32_t chz = (int32_t)((2u * exp2_q16(rnd_in(r, 0, 408289))) >> 16);   /* centi-hertz: 2 x 2^(0 .. 6.23) */
+    return (uint32_t)chz * 31165u;                                         /* 2^32 / (100 x 1378.125) */
+}
+
+/* an LFO's value this block, Q15 -32768 .. 32767 (the generator's and the atoms') */
+AINL int32_t lfo_val(lfo_run_t *s, const gen_lfo_t *l, rnd_t *r)
+{
+    uint32_t ph = s->ph, prev = ph;
+    s->ph = ph += l->inc;
+    if (l->shape == 0)
+        return sin_ph(ph);
+    if (l->shape == 1) {
+        int32_t t = (int32_t)(ph >> 16) - 32768;     /* a saw, -32768 .. 32767, folded into a triangle */
+        return (t < 0 ? -t : t) * 2 - 32768;
+    }
+    if (ph < prev)                                   /* a new cycle: a new target */
+        s->to = rnd_bi(r);
+    s->now += (s->to - s->now) >> 7;
+    return s->now;
+}
+
+/* the values an LFO may move, a bit each: not the switches and coarse steps (FILTER's type, MULAW's bits, SHIFT's
+ * direction, MODAL's, STRING's and BANK's octave, BANK's set, GLITCH's slice range, CLOUD's freeze, XOR's operation
+ * and bits, WAVESET's mode, group and amount, XMOD's algorithm): moved, they jump (BANK's set clicked 2000 times in
+ * 10 s, host count), and none of DELAY's and REVERB's (cooked in the main loop) */
+static const uint8_t FX_LFO_OK[AT_N] = {
+    0x0, 0xE, 0xF, 0xD, 0xB, 0xE, 0xE, 0xF, 0xF, 0xF, 0xF,   /* FM FILTER FOLD MULAW SHIFT MODAL STRING VOWEL TAPE REVERSE SPRING */
+    0xE, 0xB, 0xF, 0xF, 0xF, 0xF, 0xA, 0xF, 0xF, 0xF, 0x9,   /* GLITCH CLOUD SCREAM RING STARVE CHEB BANK SMEAR DIFFUSE SLEW XOR */
+    0xF, 0x8, 0xE, 0xF, 0x0, 0x0,                            /* DUST WAVESET XMOD CHAOS DELAY REVERB */
+};
+
+/* an atom's LFO drawn anew: one of the values it may move, swung up to half its bounds' span either way, at the
+ * generator's rates; a quarter of them still */
+static void fx_draw_lfo(mol_node_t *a, rnd_t *r)
+{
+    uint32_t ok = FX_LFO_OK[a->kind], n = 0, k, pick;
+    int32_t span;
+    memset(&a->lfo, 0, sizeof a->lfo);
+    a->lval = 0;
+    for (k = 0; k < 4u; k++)
+        n += (ok >> k) & 1u;
+    if (!n)
+        return;
+    pick = (uint32_t)rnd_below(r, (int32_t)n);
+    for (k = 0; k < 4u; k++)
+        if (((ok >> k) & 1u) && !pick--)
+            a->lval = (uint8_t)k;
+    span = RM_HI[AT_RM[a->kind]][a->lval] - RM_LO[AT_RM[a->kind]][a->lval];
+    a->lfo.inc = lfo_draw_inc(r);
+    a->lfo.shape = (uint8_t)rnd_below(r, 3);
+    a->lfo.depth = (int8_t)(span < 2 ? 0 : rnd_in(r, span / 6, span / 2));
+    if (rnd_chance(r, 25))
+        a->lfo.depth = 0;
+}
+
+/* each kind's values drawn anew: Norilsk's bounds for its effects (so that every effect is heard); DELAY and REVERB
+ * as before (Tonitor's parameters) */
 static void fx_draw_values(mol_node_t *a, rnd_t *r)
 {
-    static const int8_t RANGE[AT_N][4][2] = {
-        {{0, 0}, {0, 0}, {0, 0}, {0, 0}},
-        {{20, 85}, {0, 80}, {0, 100}, {0, 60}},       /* FILTER */
-        {{10, 80}, {20, 80}, {40, 100}, {0, 0}},      /* FOLD */
-        {{5, 95}, {30, 90}, {0, 0}, {0, 0}},          /* RING */
-        {{20, 85}, {0, 70}, {40, 100}, {0, 0}},       /* CRUSH */
-        {{5, 60}, {20, 90}, {30, 70}, {0, 60}},       /* CHORUS */
-        {{20, 90}, {20, 75}, {20, 80}, {30, 70}},     /* DELAY */
-        {{40, 100}, {40, 95}, {20, 70}, {40, 85}},    /* REVERB */
+    static const int8_t HEAVY[2][4][2] = {
+        {{20, 90}, {20, 75}, {20, 80}, {30, 70}},     /* DELAY: time, feedback, damping, mix */
+        {{40, 100}, {40, 95}, {20, 70}, {40, 85}},    /* REVERB: size, decay, damping, mix */
     };
     uint32_t k;
     for (k = 0; k < 4u; k++)
-        a->p[k] = (int16_t)rnd_in(r, RANGE[a->kind][k][0], RANGE[a->kind][k][1]);
+        if (fx_heavy(a->kind))
+            a->p[k] = (int16_t)rnd_in(r, HEAVY[a->kind == AT_REVERB][k][0], HEAVY[a->kind == AT_REVERB][k][1]);
+        else
+            a->p[k] = (int16_t)rnd_in(r, RM_LO[AT_RM[a->kind]][k], RM_HI[AT_RM[a->kind]][k]);
 }
 
 /* the heavy atoms' values passed on (main loop: their own parameter functions cook them) */
@@ -57,90 +117,94 @@ static void fx_apply_heavy(const mol_node_t *a)
         rv_param(a->p[0], a->p[1], a->p[2], a->p[3]);
 }
 
-static void fx_start(fx_state_t *s, const mol_node_t *a, uint32_t chorus_ix)
+/* an atom's state set up at its place in the arena, cleared (main loop, while nothing sounds) */
+static void fx_start(fx_state_t *s, const mol_node_t *a, uint32_t at)
 {
-    memset(s, 0, sizeof *s);
-    if (a->kind == AT_CHORUS) {
-        s->line = (uint8_t)chorus_ix;
-        memset(fx_line[chorus_ix], 0, sizeof fx_line[0]);
+    s->at = at;
+    s->env = 0;
+    s->g = Q15;
+    memset(&s->lr, 0, sizeof s->lr);
+    rnd_seed(&s->r, at * 2654435761u + a->kind);
+    if (fx_bytes(a->kind))
+        memset(fx_arena + at, 0, fx_bytes(a->kind));
+    if (a->kind == AT_CHAOS) {   /* one block of silence first: CHAOS starts at rest in a well, and its 10 Hz level
+                                  * filter, starting at 0, passed that as one sample 60 times full scale (it is gated
+                                  * to nothing with nothing in, so this block makes no sound) */
+        int32_t x[CTL];
+        uint8_t p[4];
+        uint32_t i;
+        for (i = 0; i < CTL; i++)
+            x[i] = 0;
+        for (i = 0; i < 4u; i++)
+            p[i] = (uint8_t)clampi(a->p[i], 0, 100);
+        m_chs(p, (m_chs_t *)(fx_arena + at), x);
     }
 }
 
-AINL int32_t fx_mix(int32_t dry, int32_t wet, int32_t pct) { return dry + (((wet - dry) * pct * 328) >> 15); }
+/* Norilsk's guard (rack.c rm_guard): a peak rider -- instant attack, ~200 ms release -- to half scale */
+static void fx_guard(fx_state_t *s, int32_t *x)
+{
+    int32_t pk = 0, want, g0 = s->g, dg;
+    uint32_t i;
+    for (i = 0; i < CTL; i++)
+        pk = maxi(pk, absi(x[i]));
+    if (pk > s->env)
+        s->env = pk;
+    else
+        s->env -= s->env >> 8;
+    want = s->env > 16384 ? (int32_t)((uint32_t)16384 * 32768u / (uint32_t)s->env) : Q15;
+    if (want > g0 && g0 < Q15)
+        want = g0 + ((want - g0) >> 3);
+    dg = (want - g0) / (int32_t)CTL;
+    for (i = 0; i < CTL; i++) {
+        g0 += dg;
+        x[i] = clampi(mulq15(x[i], g0), -Q15, Q15);  /* (and full scale at most: the guard's gain comes a block late) */
+    }
+    s->g = want;
+}
 
 /* one block of an inner atom, in -> out (CTL samples, Q15) */
 static FAST void fx_block(fx_state_t *s, const mol_node_t *a, const int32_t *in, int32_t *out)
 {
-    const int16_t *p = a->p;
+    uint8_t p[4];
+    void *st = fx_arena + s->at;
     uint32_t i;
+    for (i = 0; i < CTL; i++)
+        out[i] = in[i];
+    for (i = 0; i < 4u; i++)
+        p[i] = (uint8_t)clampi(a->p[i], 0, 100);
+    if (a->lfo.depth) {                              /* its LFO, within the bounds its effect keeps the value in */
+        uint32_t v = a->lval & 3u;
+        int32_t m = a->p[v] + ((lfo_val(&s->lr, &a->lfo, &s->r) * a->lfo.depth) >> 15);
+        p[v] = (uint8_t)clampi(m, RM_LO[AT_RM[a->kind]][v], RM_HI[AT_RM[a->kind]][v]);
+    }
     switch (a->kind) {
-    case AT_FILTER: {
-        int32_t oct = p[0] * 5374, hz;                         /* 8.2 octaves above 40 Hz, Q16 */
-        int type = p[2] < 34 ? 1 : p[2] < 67 ? 2 : 3;
-        s->ph += 3000u * CTL;                                  /* the sweep: ~0.03 Hz */
-        oct += ((sin_ph(s->ph) * 983) >> 15) * p[3];           /* up to +-1.5 octaves (Q16) */
-        hz = (int32_t)((40u * exp2_q16(clampi(oct, 0, 540000))) >> 16);
-        svf_coef(&s->c, hz, 2458 + p[1] * 221);                /* q 0.6 .. 6 */
-        for (i = 0; i < CTL; i++)
-            out[i] = svf_run(&s->svf, &s->c, in[i], type);
-        break;
+    case AT_FILTER: m_flt(p, (m_flt_t *)st, out); break;
+    case AT_FOLD: m_fld(p, (m_fld_t *)st, out); break;
+    case AT_MULAW: m_mu(p, (m_mu_t *)st, out); break;
+    case AT_SHIFT: m_shf(p, (m_shf_t *)st, out); break;
+    case AT_MODAL: m_mdl(p, (m_mdl_t *)st, out); break;
+    case AT_STRING: m_str(p, (m_str_t *)st, out); break;
+    case AT_VOWEL: m_vow(p, (m_vow_t *)st, out); break;
+    case AT_TAPE: m_tap(p, (m_tap_t *)st, out); break;
+    case AT_REVERSE: m_rvs(p, (m_rvs_t *)st, out); break;
+    case AT_SPRING: m_spr(p, (m_spr_t *)st, out); break;
+    case AT_GLITCH: m_glt(p, (m_glt_t *)st, out); break;
+    case AT_CLOUD: m_cld(p, (m_cld_t *)st, out); break;
+    case AT_SCREAM: m_scr(p, (m_scr_t *)st, out); break;
+    case AT_RING: m_rng(p, (m_rng_t *)st, out); break;
+    case AT_STARVE: m_stv(p, (m_stv_t *)st, out); break;
+    case AT_CHEB: m_chb(p, (m_chb_t *)st, out); break;
+    case AT_BANK: m_bnk(p, (m_bnk_t *)st, out); break;
+    case AT_SMEAR: m_smr(p, (m_smr_t *)st, out); break;
+    case AT_DIFFUSE: m_dif(p, (m_dif_t *)st, out); break;
+    case AT_SLEW: m_slw(p, (m_slw_t *)st, out); break;
+    case AT_XOR: m_xor(p, (m_xor_t *)st, out); break;
+    case AT_DUST: m_dst(p, (m_dst_t *)st, out); break;
+    case AT_WAVESET: m_wst(p, (m_wst_t *)st, out); break;
+    case AT_XMOD: m_xmd(p, (m_xmd_t *)st, out); break;
+    case AT_CHAOS: m_chs(p, (m_chs_t *)st, out); break;
+    default: return;
     }
-    case AT_FOLD: {
-        int32_t drive = 256 + p[0] * 1792 / 100, bias = (p[1] - 50) * 327;
-        for (i = 0; i < CTL; i++) {
-            int32_t x = ((in[i] * drive) >> 8) + bias, n = 16, y;
-            while ((x > Q15 || x < -Q15) && n--)               /* reflected back inside +-1, as often as it takes */
-                x = x > Q15 ? 2 * Q15 - x : -2 * Q15 - x;
-            y = x - s->dcx + s->dcy - (s->dcy >> 9);           /* a DC blocker: the symmetry leaves an offset */
-            s->dcx = x;
-            s->dcy = y;
-            out[i] = fx_mix(in[i], y, p[2]);
-        }
-        break;
-    }
-    case AT_RING: {
-        int32_t hz = (int32_t)((20u * exp2_q16(p[0] * 4354)) >> 16);   /* 20 Hz x 2^(0 .. 6.64) */
-        uint32_t inc = hz8_inc(hz << 8);
-        for (i = 0; i < CTL; i++) {
-            s->ph += inc;
-            out[i] = fx_mix(in[i], mulq15(in[i], sin_ph(s->ph)), p[1]);
-        }
-        break;
-    }
-    case AT_CRUSH: {
-        int32_t drop = p[0] * 13 / 100, hold = 1 + p[1] * 31 / 100;
-        int32_t mask = ~((1 << drop) - 1);
-        for (i = 0; i < CTL; i++) {
-            if (--s->hold_n <= 0) {
-                s->hold = clampi(in[i], -Q15, Q15 - 1) & mask;
-                s->hold_n = hold;
-            }
-            out[i] = fx_mix(in[i], s->hold, p[2]);
-        }
-        break;
-    }
-    case AT_CHORUS: {
-        int16_t *ln = fx_line[s->line];
-        uint32_t inc = hz8_inc((10 + p[0] * 290 / 100) * 256 / 100);   /* 0.1 .. 3 Hz, as Hz Q8 */
-        int32_t depth = 22 + p[1] * 640 / 100, base = depth + 44, fb = p[3] * 229;   /* samples; feedback Q15 <= 0.7 */
-        for (i = 0; i < CTL; i++) {
-            int32_t d8, y0, y1, y, fr;
-            uint32_t ri;
-            s->ph += inc;
-            d8 = (base << 8) + ((sin_ph(s->ph) * depth) >> 7);  /* the delay, Q8 samples */
-            ri = (s->w + FX_CH_N * 2u - (uint32_t)(d8 >> 8)) & (FX_CH_N - 1u);
-            fr = d8 & 255;
-            y0 = ln[ri];
-            y1 = ln[(ri - 1u) & (FX_CH_N - 1u)];
-            y = y0 + (((y1 - y0) * fr) >> 8);
-            ln[s->w] = (int16_t)clampi(in[i] + mulq15(y, fb), -32767, 32767);
-            s->w = (s->w + 1u) & (FX_CH_N - 1u);
-            out[i] = fx_mix(in[i], y, p[2]);
-        }
-        break;
-    }
-    default:
-        for (i = 0; i < CTL; i++)
-            out[i] = in[i];
-    }
+    fx_guard(s, out);
 }
