@@ -23,11 +23,16 @@ all: $(OUT)/molecular.bin
 $(OUT)/obj/%.o: %.c
 	@mkdir -p $(OUT)/obj
 	$(CC) $(CFLAGS) -c $< -o $@
+# main.c includes the whole core (core/molecular.c): rebuilt when any of it changes (build 70)
+$(OUT)/obj/main.o: $(wildcard ../core/*.c ../core/*.h ../core/vendor/*/*.c ../core/vendor/*/*.h ../core/vendor/*/*/*.c ../core/vendor/*/*/*.h)
 $(OUT)/obj/crt0.o: $(SDK)/startup/crt0.S
 	@mkdir -p $(OUT)/obj
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/molecular.adx: $(OBJS) app.ld
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) -lDriver -ldsp
+	@# build 73: the FPU is single precision only: any double-precision instruction is a crash on the pedal
+	@if nds32le-elf-objdump -d $@ | grep -qE '\s(fs2d|fd2s|fsi2d|fui2d|fd2u?iz?|faddd|fsubd|fmuld|fdivd|fsqrtd|fcmp[a-z]+d|fabsd|fcpyn?sd|fmfdr|fmtdr|fn?m(add|sub)d|fcmov[nz]d)\s'; then \
+		echo "Molecular: double-precision FPU instructions in the image"; rm -f $@; exit 1; fi
 $(OUT)/molecular.bin: $(OUT)/molecular.adx
 	nds32le-elf-objcopy -S -O binary $< $@
 	nds32le-elf-size $<

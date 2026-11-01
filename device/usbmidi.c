@@ -48,6 +48,7 @@ static const char *const STRINGS[4] = {0, "Molecular", "Pocket Master", "MOLECUL
 
 static void rx_poll(void);
 extern void GIE_DISABLE(void);
+extern void OTG_DeviceBulkSendStart(uint8_t EpNum, uint8_t *Buf, uint32_t Len);   /* (libDriver, no prototype) */
 extern void GIE_ENABLE(void);
 void usb_start(void);
 static uint8_t setup[8], ctl[64];
@@ -66,6 +67,22 @@ static uint32_t log_w, log_r;                        /* lines written, lines sen
 static int host_open;                                /* the Mac has sent MIDI within OPEN_MS */
 static uint32_t open_at;
 
+/* build 72: the IN endpoint free (its last packet taken by the Mac), waited for a few ms at most. Until build 71 each
+ * packet went out with OTG_DeviceBulkSend inside GIE_DISABLE: its timeout counts the SDK's tick (gSysTick), which
+ * only an interrupt advances, so with interrupts masked it never ran out, and while the Mac did not read the port
+ * (the cable just plugged in, after an install) the pedal waited for good: sound, keys, screen, the hang watch all
+ * stopped, until a re-plug. A packet loaded while the last was still waiting also mixed with it (the log's garbled
+ * numbers). */
+static int ep_in_free(void)
+{
+    uint32_t t;
+    for (t = 0; t < 100000u; t++) {                  /* (a register read a turn: a few ms at most) */
+        *(volatile uint8_t *)0x4000030Eu = EP_IN & 0x0Fu;    /* the endpoint's index (as OTG_DeviceBulkSend) */
+        if (!(*(volatile uint16_t *)0x40000312u & 1u))      /* its TX packet ready bit clear: sent */
+            return 1;
+    }
+    return 0;
+}
 static void send_sysex(const uint8_t *m, uint32_t n)  /* m: F0 .. F7; packed as USB-MIDI events, cable 0 */
 {
     uint8_t buf[64];
@@ -80,9 +97,11 @@ static void send_sysex(const uint8_t *m, uint32_t n)  /* m: F0 .. F7; packed as 
         k += 4;
         i += take;
         if (k == sizeof buf || i == n) {
-            GIE_DISABLE();                           /* (0.42: masked again, as 0.35 .. 0.40: without it the log
-                                                      * stops; it sends only while the Mac reads) */
-            OTG_DeviceBulkSend(EP_IN, buf, k, 20);
+            if (!ep_in_free())                       /* build 72: the Mac has not taken the last packet: this one is
+                                                      * dropped (a log line, at most) */
+                return;
+            GIE_DISABLE();                           /* (0.42: masked while the endpoint is loaded, as 0.35 .. 0.40) */
+            OTG_DeviceBulkSendStart(EP_IN, buf, k);
             GIE_ENABLE();
             k = 0;
         }
@@ -108,6 +127,23 @@ void usb_log(const char *s)
     log_w++;
     if (log_w - log_r > LOG_LINES)
         log_r = log_w - LOG_LINES;
+}
+/* a line with one number in hex: "label 0x1234ABCD" */
+void usb_logx(const char *label, uint32_t v)
+{
+    char s[LOG_LEN];
+    uint32_t i = 0, k;
+    while (label[i] && i < LOG_LEN - 13u) {
+        s[i] = label[i];
+        i++;
+    }
+    s[i++] = ' ';
+    s[i++] = '0';
+    s[i++] = 'x';
+    for (k = 0; k < 8u; k++)
+        s[i++] = "0123456789ABCDEF"[(v >> (28u - 4u * k)) & 15u];
+    s[i] = 0;
+    usb_log(s);
 }
 /* a line with one number (decimal): "label 123" */
 void usb_logn(const char *label, uint32_t v)

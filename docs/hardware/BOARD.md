@@ -128,3 +128,18 @@ its address 0x4400; a Keil image, scatter-loaded into RAM at 0x20000000). Two li
 Power-off (stock `0x43E24`): A17, B3, A24 low, in that order, then wait. B3 is the power hold: on battery the pedal
 goes off there; the power key (the encoder, A15) powers it on. Stock never calls `BACKUP_SystemPowerDown` (0.26
 did: the chip stopped answering). A battery disconnect resets the always-on power state.
+
+## The chip's rules for an application (found 2026-11-01, builds 64 .. 74)
+Five faults that only the pedal shows (the simulator and the host tests have none of these limits):
+- **PSW.AEN** (bit 13, the audio extension) must be set by the application. The zero-overhead loops (`mtlbi`,
+  `mtlei`, `$lc`), which GCC makes of many loops with `-mext-zol`, run their body once without it. flash_boot leaves
+  it on after a cold start and off after an install (logged: PSW `0x00070008`, a 16-step loop ran 1 step; 16 with
+  AEN set). Neither the SDK's start-up nor the stock firmware sets it. Molecular sets it in `__cpu_init`.
+- **The FPU is single precision only** (d1088-spu): a double-precision instruction is a coprocessor exception
+  (exception 7, ITYPE `0x200E6`). The device Makefile fails on any.
+- **RAM from 0x2003C000 is not the application's**: data placed there (USB buffers, the ARM link's buffers, the
+  flash driver's state) were overwritten. `app.ld` asserts `_end <= 0x2003BF00`.
+- **The stack is 4 KB** (0x20003000 .. 0x20004000), with the hardware stack bound below it and the TCM's copy of the
+  first 12 KB of code below that.
+- **The SDK's timeouts count an interrupt's tick** (`gSysTick`): a call with a timeout inside `GIE_DISABLE` waits
+  for good if the event never comes (USB sends while the Mac does not read).

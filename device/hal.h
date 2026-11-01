@@ -25,6 +25,9 @@ void hal_backlight(uint32_t pct);
 void hal_lcd_frame(const uint16_t *px, uint32_t w, uint32_t h);
 void hal_lcd_on(int on);
 void hal_link_restart(void);            /* the audio link to the ARM set up afresh */
+void hal_dma_clear(void);               /* build 69: flash_boot's DMA stopped (hal.c) */
+extern uint32_t hal_dma_left[8][2], hal_dma_nleft;
+extern volatile uint32_t hal_watch;
 void hal_render(void);                  /* fills the audio ring; call often from the main loop */
 int hal_sides_held(void);               /* both side keys down */
 #define HAL_PATCH_BASE 0x170000u        /* the patches' flash: a 4 KB sector a slot */

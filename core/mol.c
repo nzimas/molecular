@@ -432,6 +432,14 @@ static int mol_poll(void)
     rack_root = mol_d.gen.note[0];                   /* MODAL, STRING, BANK: tuned to the chord's root */
     for (i = 1; i < mol_d.shape.n; i++) {
         const mol_node_t *a = &mol_d.shape.node[i];
+        if (at + fx_bytes(a->kind) > FX_ARENA) {     /* build 69: a patch saved with the larger arena (64 KB) whose
+                                                      * atoms no longer fit: this one becomes the lightest atom */
+            uint32_t k, best = AT_N;
+            for (k = 1; k < AT_N; k++)
+                if (!fx_heavy(k) && fx_bytes(k) && (best == AT_N || fx_bytes(k) < fx_bytes(best)))
+                    best = k;
+            mol_d.shape.node[i].kind = (uint8_t)best;
+        }
         fx_start(&mol_fs[i], a, at);                 /* each atom's state at its place in the arena, cleared */
         at += fx_bytes(a->kind);
         fx_apply_heavy(a);

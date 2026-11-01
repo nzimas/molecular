@@ -176,7 +176,8 @@ typedef struct {
 static void nx_source_frame(nx_source_t *s)
 {
     int64_t R[SR_P + 1], en;
-    int32_t a[SR_P + 1], t[SR_P + 1], w[SR_N], r30[SR_P + 1];
+    static int32_t w[SR_N];                          /* (build 69: static, not 1 KB of the device's 4 KB stack) */
+    int32_t a[SR_P + 1], t[SR_P + 1], r30[SR_P + 1];
     int32_t e30, i, j, p = s->order, sh = 0;
     for (i = 0; i < SR_N; i++) {                     /* the frame, oldest first, through a Hann window */
         int32_t h = (Q15 - sin_ph((uint32_t)i * (0xFFFFFFFFu / SR_N) + (1u << 30))) >> 1;

@@ -8,6 +8,7 @@
 
 #include <nds32_intrinsic.h>
 #include "debug.h"
+#include "trace.h"		/* Molecular build 74: CPU_FOUND_* */
 
 /* It will use Default_Handler if you don't have one */
 //#pragma weak ExceptionCommHandler = Default_Handler
@@ -45,16 +46,16 @@
 #pragma weak OS_Trap_Interrupt_SWI =  Default_Handler
 
 __attribute__((unused))
-extern void hal_crashed(void) __attribute__((noreturn));
+extern void hal_crashed(unsigned num) __attribute__((noreturn));
 static void Default_Handler()
 {
-	hal_crashed();		/* Molecular: an unexpected interrupt: 20 s, then flash_boot (hal.c) */
+	hal_crashed(0xFFu);	/* Molecular: an unexpected interrupt: 50 s, then flash_boot (hal.c) */
 }
 
 __attribute__((unused))
 void ExceptionCommHandler(unsigned stack, unsigned exception_num)
 {
-	hal_crashed();		/* Molecular: a crash: 20 s, then flash_boot (hal.c) */
+	hal_crashed(exception_num);	/* Molecular: a crash, recorded (hal.c): 50 s, then flash_boot */
 
 	unsigned int mask_itype,mask_ipc;
 	unsigned int *pstack;
@@ -213,6 +214,27 @@ void __c_init()
 	return;
 }
 
+/* Molecular build 74: a byte copy the compiler makes a hardware loop; how many of 16 bytes arrived */
+__attribute__((noinline)) static void zol_copy(unsigned char *d, const unsigned char *s, unsigned int n)
+{
+	unsigned int i;
+	for (i = 0; i < n; i++)
+		d[i] = s[i];
+}
+__attribute__((noinline)) static unsigned int zol_test(void)
+{
+	unsigned char a[16], b[16];
+	unsigned int i, ok = 0;
+	for (i = 0; i < 16; i++) {
+		a[i] = (unsigned char)(i + 1);
+		b[i] = 0;
+	}
+	zol_copy(b, a, 16);
+	for (i = 0; i < 16; i++)
+		ok += b[i] == a[i];
+	return ok;
+}
+
 void __cpu_init()
 {
 	unsigned int tmp;
@@ -257,6 +279,16 @@ void __cpu_init()
 	__nds32__mtsr(0x10000, NDS32_SR_IVB);
 # endif
 #endif
+	/* Molecular build 74: the status word as found, and a hardware loop (zero-overhead loop) tried, both kept for the
+	 * log past __c_init (free RAM above _end, which nothing clears): then PSW.AEN (bit 13, the audio extension, which
+	 * the zero-overhead loops belong to) set. Nothing set it before: it was whatever flash_boot left, and after an
+	 * install that was off: every loop the compiler made a hardware loop ran once (the screen's rows, the sound, the
+	 * log's digits: all scrambled) */
+	CPU_FOUND_PSW = __nds32__mfsr(NDS32_SR_PSW);
+	CPU_FOUND_ZOL = zol_test();
+	__nds32__mtsr_dsb(__nds32__mfsr(NDS32_SR_PSW) | (1u << 13), NDS32_SR_PSW);
+	__nds32__isb();
+	CPU_AEN_ZOL = zol_test();
 	/* Set PSW INTL to 0 */
 	tmp = __nds32__mfsr(NDS32_SR_PSW);
 	tmp = tmp & 0xfffffff9;
@@ -295,9 +327,10 @@ void __cpu_init()
 		tmp = __nds32__mfsr(NDS32_SR_FUCOP_CTL);
 		__nds32__mtsr_dsb((tmp | 0x1), NDS32_SR_FUCOP_CTL);
 
-		/* Denormalized flush-to-Zero mode on */
-		tmp =__nds32__fmfcsr();
-		tmp |= (1 << 12);
+		/* Denormalized flush-to-Zero mode on. Molecular build 71: the whole register set, not or-ed into what the
+		 * last program (flash_boot) left: round to nearest, no flags, every exception trap off (with one left on,
+		 * an odd value in the physical models' set-up, core/pm.c, was a coprocessor exception: a crash) */
+		tmp = (1 << 12);
 		__nds32__fmtcsr(tmp);
 		__nds32__dsb();
 	}

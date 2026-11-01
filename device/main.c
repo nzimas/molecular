@@ -17,6 +17,7 @@
 #include "hal.h"
 #include "usbmidi.h"
 #include "armlink.h"
+#include "trace.h"
 #include "molecular.c"
 #include "chip_info.h"
 #include "irqn.h"
@@ -27,6 +28,8 @@
 
 
 static void audio_block(int16_t *lr) { mol_block(lr); }
+static uint32_t cpu_psw, cpu_zol, cpu_zol_aen;      /* build 74: what __cpu_init found (trace.h) */
+static uint32_t crash[4], crash_seen;                /* build 65: the last start's crash, if any (trace.h) */
 
 /* the patches (core/patch.c): a flash sector a slot */
 static int plat_patch_read(uint32_t slot, void *buf, uint32_t n)
@@ -73,11 +76,27 @@ int main(void)
     hal_clocks();                                    /* 0.14: the stock clocks (USB's among them), the flash and the
                                                       * tick, as stock */
     WDG_Disable();                                   /* again, whatever the clocks did */
+    hal_dma_clear();                                 /* build 69: whatever flash_boot left running, stopped */
+    {   /* build 69: the stack (0x20003000 .. 0x20004000: below it the TCM's code, the hardware's bound) marked, for
+         * the log's low-water mark */
+        volatile uint32_t *w = (volatile uint32_t *)0x20003000u;
+        uint32_t sp = __nds32__get_current_sp() - 64u;
+        while ((uint32_t)w < sp)
+            *w++ = 0xA5A5A5A5u;
+    }
     GIE_ENABLE();
     usb_start();
-    usb_log("Molecular build 64");
+    usb_log("Molecular build 74");
     usb_logn("keys held", held);
     usb_logn("watchdog reset", (uint32_t)wd);
+    if (TRACE[2] == 0xE0u && TRACE[0] == TRACE_MAGIC) { /* build 65: the run before crashed: what and where, kept for
+                                                      * the log (below) until the next power-off */
+        crash[0] = TRACE[4], crash[1] = TRACE[5], crash[2] = TRACE[6], crash[3] = TRACE[7];
+        crash_seen = 1;
+    } else if ((TRACE[2] & 0xF0u) == 0xE0u)          /* (an older build's mark: a crash, nothing more known) */
+        crash_seen = 2;
+    TRACE[2] = 0;
+    cpu_psw = CPU_FOUND_PSW, cpu_zol = CPU_FOUND_ZOL, cpu_zol_aen = CPU_AEN_ZOL;
     push_held = hal_init(held);
     arm_init();                                      /* 0.36: the effects processor's control link (armlink.c) */
     DelayMs(300);                                    /* (the ARM's own start; stock waits 200 ms after A17, A24) */
@@ -100,6 +119,7 @@ int main(void)
     hal_backlight(90);
     hal_stage(14);
     started = hal_ms();
+    hal_watch = 1;                                   /* build 69: a main loop stopped 5 s is a hang, recorded */
     for (;;) {
         uint32_t now = hal_ms();
         int e;
@@ -131,6 +151,25 @@ int main(void)
                 usb_logn("peak", hal_peak);
                 usb_logn("short", hal_under);
                 usb_logn("late", hal_late);
+                if (crash_seen) {                    /* build 65: the crash before this start */
+                    usb_logn("CRASHED before: exc", crash[0]);
+                    usb_logn("crash ipc", crash[1]);
+                    usb_logn("crash itype", crash[2]);
+                    usb_logn("crash ipsw", crash[3]);
+                }
+                for (i = 0; i < hal_dma_nleft; i++) {  /* build 69: the DMA as flash_boot left it */
+                    usb_logx("dma left at", hal_dma_left[i][0]);
+                    usb_logx("  =", hal_dma_left[i][1]);
+                }
+                {   /* build 69: the stack never touched, bytes (of 4096) */
+                    volatile uint32_t *w = (volatile uint32_t *)0x20003000u;
+                    while ((uint32_t)w < 0x20004000u && *w == 0xA5A5A5A5u)
+                        w++;
+                    usb_logn("stack free", (uint32_t)w - 0x20003000u);
+                }
+                usb_logx("psw found", cpu_psw);      /* build 74: AEN (0x2000) as flash_boot left it */
+                usb_logn("loop found /16", cpu_zol);
+                usb_logn("loop aen /16", cpu_zol_aen);
                 usb_logn("xfers", hal_xfers);
                 usb_logn("relinks", hal_relinks);
                 {   /* 0.63: the audio's load, % of real time over the last 2 s, and its longest block (726 us each) */

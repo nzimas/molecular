@@ -49,6 +49,27 @@ extern void SysTickDeInit(void);
 /* ----------------------------------------------------------- the update hand-over --- */
 #define FLASH_BOOT_FLAGE (*(volatile uint32_t *)0x4000100C)
 
+/* build 69: the DMA controller as flash_boot leaves it, then cleared, as boot_recover clears it before handing over.
+ * Channels flash_boot left running write into RAM behind the data cache: the CPU reads its cached (right) copy, while
+ * the LCD's and USB's transfers read the overwritten RAM (2026-11-01: the screen scrambled, the log's numbers garbled,
+ * the frame intact to the CPU). The registers that were not 0 are kept for the log. */
+uint32_t hal_dma_left[8][2], hal_dma_nleft;
+void hal_dma_clear(void)
+{
+    uint32_t a;
+    for (a = 0x4000D000u; a < 0x4000D104u; a += 4u) {
+        uint32_t v = *(volatile uint32_t *)a;
+        if (v && hal_dma_nleft < 8u) {
+            hal_dma_left[hal_dma_nleft][0] = a;
+            hal_dma_left[hal_dma_nleft][1] = v;
+            hal_dma_nleft++;
+        }
+    }
+    *(volatile uint32_t *)0x4000D100 = 0;
+    for (a = 0x4000D000u; a < 0x4000D104u; a += 4u)
+        *(volatile uint32_t *)a = 0;
+}
+
 /* flash_boot's PC update mode: the Sonicake Manager can then write any firmware (the stock one included). The
  * sequence is the stock firmware's (0x41FE0), which is the SDK's start_up_grate() with the PC source. */
 void boot_recover(void)
@@ -256,26 +277,14 @@ static void lcd_seq(uint8_t c, const uint8_t *d, uint32_t n)
     if (n)
         lcd_data(d, n);
 }
-static void lcd_init(void)                           /* the stock firmware's 0x40C7C, command for command */
+/* the panel's registers, as the stock firmware's 0x40C7C sets them */
+static const uint8_t B1[] = {0x05, 0x3A, 0x3A}, B3[] = {0x05, 0x3A, 0x3A, 0x05, 0x3A, 0x3A}, B4[] = {0x03};
+static const uint8_t C0[] = {0x62, 0x02, 0x04}, C1[] = {0xC0}, C2[] = {0x0D, 0x00}, C3[] = {0x8D, 0x6A};
+static const uint8_t C4[] = {0x8D, 0xEE}, C5[] = {0x12}, MAD[] = {0x68}, COL[] = {0x55};
+static const uint8_t E0[] = {0x03, 0x1B, 0x12, 0x11, 0x3F, 0x3A, 0x32, 0x34, 0x2F, 0x2B, 0x30, 0x3A, 0x00, 0x01, 0x02, 0x05};
+static const uint8_t E1[] = {0x03, 0x1B, 0x12, 0x11, 0x32, 0x2F, 0x2A, 0x2F, 0x2E, 0x2C, 0x35, 0x3F, 0x00, 0x00, 0x01, 0x05};
+static void lcd_regs(void)
 {
-    static const uint8_t B1[] = {0x05, 0x3A, 0x3A}, B3[] = {0x05, 0x3A, 0x3A, 0x05, 0x3A, 0x3A}, B4[] = {0x03};
-    static const uint8_t C0[] = {0x62, 0x02, 0x04}, C1[] = {0xC0}, C2[] = {0x0D, 0x00}, C3[] = {0x8D, 0x6A};
-    static const uint8_t C4[] = {0x8D, 0xEE}, C5[] = {0x12}, MAD[] = {0x68}, COL[] = {0x55};
-    static const uint8_t E0[] = {0x03, 0x1B, 0x12, 0x11, 0x3F, 0x3A, 0x32, 0x34, 0x2F, 0x2B, 0x30, 0x3A, 0x00, 0x01, 0x02, 0x05};
-    static const uint8_t E1[] = {0x03, 0x1B, 0x12, 0x11, 0x32, 0x2F, 0x2A, 0x2F, 0x2E, 0x2C, 0x35, 0x3F, 0x00, 0x00, 0x01, 0x05};
-    SPIM_ClrIntFlag();                               /* 0x40C64: as stock, then mode 0, the fastest clock */
-    SPIM_Init(0, 0);
-    hal_stage(0x91);
-    GPIO_RegOneBitSet(GPIO_A_OUT, LCD_RST);
-    DelayMs(1);
-    GPIO_RegOneBitClear(GPIO_A_OUT, LCD_RST);
-    DelayMs(1);
-    GPIO_RegOneBitSet(GPIO_A_OUT, LCD_RST);
-    DelayMs(130);
-    hal_stage(0x92);
-    lcd_cmd(0x11);
-    hal_stage(0x93);
-    DelayMs(120);
     lcd_seq(0xB1, B1, 3);
     lcd_seq(0xB2, B1, 3);
     lcd_seq(0xB3, B3, 6);
@@ -290,6 +299,23 @@ static void lcd_init(void)                           /* the stock firmware's 0x4
     lcd_seq(0xE1, E1, 16);
     lcd_seq(0x36, MAD, 1);                           /* landscape, BGR */
     lcd_seq(0x3A, COL, 1);                           /* RGB565 */
+}
+static void lcd_init(void)                           /* the stock firmware's 0x40C7C, command for command */
+{
+    SPIM_ClrIntFlag();                               /* 0x40C64: as stock, then mode 0, the fastest clock */
+    SPIM_Init(0, 0);
+    hal_stage(0x91);
+    GPIO_RegOneBitSet(GPIO_A_OUT, LCD_RST);
+    DelayMs(1);
+    GPIO_RegOneBitClear(GPIO_A_OUT, LCD_RST);
+    DelayMs(1);
+    GPIO_RegOneBitSet(GPIO_A_OUT, LCD_RST);
+    DelayMs(130);
+    hal_stage(0x92);
+    lcd_cmd(0x11);
+    hal_stage(0x93);
+    DelayMs(120);
+    lcd_regs();
     hal_stage(0x94);
 }
 
@@ -438,6 +464,9 @@ static hal_block_fn audio_fn;
 int puts(const char *s) { (void)s; return 0; }
 int printf(const char *f, ...) { (void)f; return 0; }
 static volatile uint32_t ms_now;
+static uint32_t hal_hang_ipc;
+extern volatile uint32_t hal_alive_at, hal_watch;
+void hal_crashed(unsigned num) __attribute__((noreturn));
 static volatile uint32_t ev_head, ev_tail;
 static volatile uint8_t ev_q[32];
 static uint32_t key_cnt[4], key_state[4], key_map[4], nkeys = 3;   /* key_map: physical key -> HAL_EV_* */
@@ -508,6 +537,7 @@ void hal_render(void)
 {
     static uint32_t seen_xfers, seen_at;
     uint32_t n;
+    hal_alive_at = ms_now;                           /* build 69: the hang watch's heartbeat */
     if (audio_fn) {                                  /* 0.56: no exchange for 200 ms: the link restarted. With the
                                                       * link stopped nothing was read, no block was made, and every
                                                       * fade (a new molecule, POWER OFF) waited for good (0.55) */
@@ -548,6 +578,10 @@ void Timer2Interrupt(void)
     uint32_t k;
     Timer_InterruptFlagClear(TIMER2, UPDATE_INTERRUPT_SRC);
     ms_now++;
+    if (hal_watch && ms_now - hal_alive_at > 5000u) { /* build 69: the main loop stopped 5 s: where it was */
+        hal_hang_ipc = __nds32__mfsr(NDS32_SR_IPC);
+        hal_crashed(0xEEu);
+    }
     for (k = 0; k < nkeys; k++) {                    /* keys: 20 ms to be believed */
         uint32_t d = (uint32_t)key_raw(k);
         if (d != key_state[k]) {
@@ -696,16 +730,40 @@ void hal_report(int crash)
     boot_recover();
 }
 
-/* A crash or an unexpected interrupt: 50 s (no watchdog, no NVM: nothing that could fail again), then flash_boot,
- * so a crash is told from a hang (never back) and from a clean hand-over (back at once) by the time on USB. */
-void hal_crashed(void)
+/* A crash or an unexpected interrupt (or a hang, 0xEE: the main loop stopped 5 s, Timer2Interrupt): recorded, then
+ * build 69: no hand-over. USB is served for good, the record in the log every 2 s, so it is read live (an install
+ * through flash_boot overwrote the record in RAM); 11 6F from the Mac still reaches flash_boot. */
+volatile uint32_t hal_alive_at, hal_watch;
+void hal_crashed(unsigned num)
 {
-    uint32_t i;
+    uint32_t i, rec[4];
     GIE_DISABLE();
-    TRACE[2] = 0xE0u | (TRACE[2] & 0xFu);           /* 0xE?: a crash after checkpoint ?'s low digit */
-    for (i = 0; i < 100u; i++)                       /* 50 s: apart from the probes' 5 .. 20 s */
-        DelayMs(500);
-    boot_recover();
+    hal_watch = 0;
+    rec[0] = num;
+    rec[1] = num == 0xEEu ? hal_hang_ipc : __nds32__mfsr(NDS32_SR_IPC);
+    rec[2] = __nds32__mfsr(NDS32_SR_ITYPE);
+    rec[3] = __nds32__mfsr(NDS32_SR_IPSW);
+    TRACE[0] = TRACE_MAGIC;                          /* build 65: what and where, for the next start's log */
+    TRACE[4] = rec[0];
+    TRACE[5] = rec[1];
+    TRACE[6] = rec[2];
+    TRACE[7] = rec[3];
+    TRACE[2] = 0xE0u;
+    GIE_ENABLE();                                    /* build 72: the SDK's USB timeouts count an interrupt's tick */
+    for (i = 0;; i++) {
+        if (i % 2000u == 0u) {
+            usb_logn("CRASH exc", rec[0]);
+            usb_logx("crash ipc", rec[1]);
+            usb_logx("crash itype", rec[2]);
+            usb_logx("crash ipsw", rec[3]);
+        }
+        usb_poll();
+        if (usb_midi_rx()) {
+            DelayMs(50);
+            boot_recover();
+        }
+        DelayMs(1);
+    }
 }
 
 /* The start-up counter: NVM byte 15 (battery-backed, survives resets) holds 0xA0 + the starts that have not yet
@@ -757,6 +815,7 @@ int hal_power_off(void)
     GPIO_RegOneBitClear(GPIO_B_OUT, PIN(3));         /* stock 0x420FC: the power hold */
     DelayMs(500);
     for (;;) {
+        hal_alive_at = ms_now;
         usb_poll();
         if (usb_midi_rx()) {
             DelayMs(50);

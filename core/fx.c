@@ -11,7 +11,8 @@
  * DELAY and REVERB are the heavy atoms: one of each at most (their lines are single, 44 and 43 KB) and only at the
  * molecule's edge, where they take a mono input and add a stereo output. The others are mono in, mono out. */
 
-#define FX_ARENA 65536u          /* the atoms' memory: the largest atoms (TAPE, REVERSE) take 20 KB each */
+#define FX_ARENA 52224u          /* the atoms' memory: the largest atoms (TAPE, REVERSE) take 20 KB each. Build 69: 51
+                                  * KB, not 64: on the device all data must end below 0x2003C000 (device/app.ld) */
 static uint8_t fx_arena[FX_ARENA] POOL __attribute__((aligned(8)));
 static uint32_t fx_place(const void *st) { return (uint32_t)((const uint8_t *)st - fx_arena); }
 

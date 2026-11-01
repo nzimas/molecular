@@ -206,6 +206,9 @@ SECTIONS
 	PROVIDE (___sbss_end = .);
 	. = ALIGN(4);
 	_end = .;
+	/* Molecular build 69: RAM from 0x2003C000 is not ours (build 64 ended at 0x2003DF10: the screen scrambled, the
+	 * USB log garbled, crashes; build 63 ended at 0x2003BF34 and was sound) */
+	ASSERT(_end <= 0x2003BF00, "Molecular: the data reach past 0x2003BF00 (0x2003BF00 .. : startup notes, trace.h; 0x2003C000 ..: not ours)")
 	PROVIDE (end = .);
 	EILM_SIZE = LOADADDR(.sdata_f) + SIZEOF(.sdata_f) - EILM_BEGIN;
 	.stab	0 : { *(.stab) }

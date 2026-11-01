@@ -3,6 +3,46 @@
 Versions are build numbers, as in the other firmwares (build 64 was first called 0.64; the comments in the code
 still name the builds that way).
 
+## Build 74: hardware loops switched on
+- The scrambled screen, sound and log after an install: the compiler turns many loops into the chip's hardware loops
+  (zero-overhead loops, part of its audio extension), which work only with PSW.AEN set. Nothing in Molecular set it:
+  it was what the update loader left, and after an install it was off, so each such loop ran its body once. It is now
+  set at the start; the log reports the status word as found and a 16-byte loop tried before and after.
+
+## Build 73: no double precision on the pedal
+- The crash on a new physical-model molecule since build 64 (the HARP .. SKIN families): the pedal's FPU is single
+  precision only, and the physical models' set-up (core/pm.c) computed in double, a coprocessor exception at its
+  first double instruction. It computes in float on the pedal (double on the host), and the build fails if a
+  double-precision instruction ever gets into the image again. (Build 71's FPU traps were not the cause.)
+
+## Build 72: USB never stops the pedal
+- The freeze when the USB cable goes in (and the scrambled sound after an install): each log packet was sent with
+  interrupts masked and a timeout that only an interrupt advances, so while the Mac did not read, the pedal waited
+  for good. A packet now goes out only when the last has been taken (a few ms at most, else the line is dropped),
+  with interrupts masked only while it is loaded.
+
+## Build 71: no floating-point traps
+- A crash on a new molecule (build 70's crash report: a coprocessor exception in the physical models' set-up,
+  core/pm.c): the FPU's control register is now set whole at the start (every exception trap off) instead of one bit
+  added to what the update loader left. The banded waveguides' modes check their frequency before dividing by it.
+
+## Build 70: the data back below 0x2003C000
+- The cause of the scrambled screen, the garbled USB log and the crashes since build 64: the data had grown past
+  0x2003C000 (build 63 ended at 0x2003BF34, build 64 at 0x2003DF10), into RAM that is not ours, where the USB, the
+  effects link's buffers and the flash driver's state then lay. The atoms' arena is 51 KB instead of 64 (a molecule
+  is still drawn to fit; an older patch whose atoms no longer fit has its last ones made the lightest atom), and the
+  link fails if the data ever reach that address again.
+
+## Build 69: the stack, and crashes reported live (installed once, with the old layout)
+- Two buffers of the build 64 sounds (the physical models' strike, 2 KB, and an effect's analysis window, 1 KB) moved
+  off the stack, which on the device is 4 KB with the hardware's bound below it: a strike could go past it and crash.
+- At the start the DMA channels the update loader left running are stopped (and listed in the log).
+- A crash, or a main loop stopped for 5 s, is reported over USB for good (where, in hex) instead of a hand-over to the
+  update loader after 50 s; the log shows the stack's low-water mark.
+
+## Build 65: crash records
+- A crash leaves its exception and address in memory that survives the restart, and the next start logs them.
+
 ## Build 64: a wider palette
 - SETTINGS has a second page, MIX: the effects' share of the sound, 0 .. 100 % (50 to begin with), saved with the
   patch.

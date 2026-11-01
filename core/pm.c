@@ -23,8 +23,16 @@
  *
  * Fixed point: the loop Q15 in int16 lines; the round trip's gain and every coefficient near 1 in Q30 (a Q15 step
  * there is a decay twice as long, a resonance a semitone off). Coefficients are worked out once a molecule (main
- * loop, double, no libm). */
+ * loop, double (float on the pedal), no libm). */
 
+/* the set-up's arithmetic (build 73): double on the host, float on the pedal, whose FPU is single precision only
+ * (d1088-spu: every double instruction there is a coprocessor exception, the crash on a new physical-model molecule
+ * since build 64). Float costs the decays about 1 % (a coefficient near 1 in 24 bits), nothing audible. */
+#ifdef __nds32__
+typedef float pm_real;
+#else
+typedef double pm_real;
+#endif
 #define PM_LEN 1024u
 #define PM_MODES 8
 enum { PM_STRING, PM_STIFF, PM_DRUM, PM_TUBE, PM_BUZZ, PM_GONG, PM_BANDED, PM_MODAL };
@@ -80,11 +88,11 @@ typedef struct {
     uint8_t live;
 } pm_voice_t;
 
-/* ----------------------------------------------- double maths, no libm (main loop) --- */
-static double pm_exp(double x)
+/* --------------------------------------- double (pedal: float) maths, no libm (main loop) --- */
+static pm_real pm_exp(pm_real x)
 {
     int k = 0;
-    double s = 1, t = 1;
+    pm_real s = 1, t = 1;
     int i;
     while (x > 0.5 || x < -0.5) {
         x *= 0.5;
@@ -98,15 +106,15 @@ static double pm_exp(double x)
         s *= s;
     return s;
 }
-static double pm_ln(double x)                       /* x > 0 */
+static pm_real pm_ln(pm_real x)                       /* x > 0 */
 {
-    double y = 0, z;
+    pm_real y = 0, z;
     int i;
     while (x > 2) { x *= 0.5; y += 0.6931471805599453; }
     while (x < 0.5) { x *= 2; y -= 0.6931471805599453; }
     z = (x - 1) / (x + 1);
     {
-        double z2 = z * z, t = z, s = 0;
+        pm_real z2 = z * z, t = z, s = 0;
         for (i = 1; i < 40; i += 2) {
             s += t / i;
             t *= z2;
@@ -115,9 +123,9 @@ static double pm_ln(double x)                       /* x > 0 */
     }
     return y;
 }
-static double pm_sincos(double w, int want_cos)     /* w in [-pi, pi] (reduced by halving) */
+static pm_real pm_sincos(pm_real w, int want_cos)     /* w in [-pi, pi] (reduced by halving) */
 {
-    double s, c, w2;
+    pm_real s, c, w2;
     int k = 0;
     while (w > 0.2 || w < -0.2) {
         w *= 0.5;
@@ -126,16 +134,16 @@ static double pm_sincos(double w, int want_cos)     /* w in [-pi, pi] (reduced b
     w2 = w * w;
     s = w * (1 - w2 / 6 * (1 - w2 / 20 * (1 - w2 / 42 * (1 - w2 / 72))));
     c = 1 - w2 / 2 * (1 - w2 / 12 * (1 - w2 / 30 * (1 - w2 / 56)));
-    while (k--) {                                    /* the double angle */
-        double s2 = 2 * s * c, c2 = c * c - s * s;
+    while (k--) {                                    /* the doubled angle */
+        pm_real s2 = 2 * s * c, c2 = c * c - s * s;
         s = s2;
         c = c2;
     }
     return want_cos ? c : s;
 }
-static double pm_atan2(double y, double x)
+static pm_real pm_atan2(pm_real y, pm_real x)
 {
-    double a, z, s = 0, t, z2;
+    pm_real a, z, s = 0, t, z2;
     int i, k = 0, flip = 0;
     if (x == 0)
         return y >= 0 ? 1.5707963267948966 : -1.5707963267948966;
@@ -162,15 +170,15 @@ static double pm_atan2(double y, double x)
         a = y >= 0 ? a + 3.141592653589793 : a - 3.141592653589793;
     return a;
 }
-static int32_t pm_q30(double v) { return (int32_t)(v * 1073741824.0 + (v >= 0 ? 0.5 : -0.5)); }
+static int32_t pm_q30(pm_real v) { return (int32_t)(v * 1073741824.0 + (v >= 0 ? 0.5 : -0.5)); }
 
-/* the MIDI note's frequency, double */
-static double pm_hz(int32_t note) { return 440.0 * pm_exp((note - 69) * 0.05776226504666211); }
+/* the MIDI note's frequency, pm_real */
+static pm_real pm_hz(int32_t note) { return 440.0 * pm_exp((note - 69) * 0.05776226504666211); }
 
 /* one note's loop worked out from the design */
 static void pm_prepare(pm_note_t *nt, const pm_design_t *d, int32_t note)
 {
-    double f0, L, t60 = clampi(d->t60, 1, 250) * 0.1, ph = 0, delta, B = clampi(d->bright, 0, 100) / 100.0;
+    pm_real f0, L, t60 = clampi(d->t60, 1, 250) * 0.1, ph = 0, delta, B = clampi(d->bright, 0, 100) / 100.0;
     int32_t k;
     memset(nt, 0, sizeof *nt);
     note += 12 * d->octave;
@@ -180,7 +188,7 @@ static void pm_prepare(pm_note_t *nt, const pm_design_t *d, int32_t note)
     nt->width = 6 + (100 - clampi(d->hard, 0, 100)) * 2;            /* 0.15 .. 4.7 ms */
     if (d->model == PM_MODAL) {                                      /* the resonators */
         for (k = 0; k < d->nmode && k < PM_MODES; k++) {
-            double f = d->ratio[k] < 0 ? -d->ratio[k] : f0 * d->ratio[k] / 1024.0, w, r, tm;
+            pm_real f = d->ratio[k] < 0 ? -d->ratio[k] : f0 * d->ratio[k] / 1024.0, w, r, tm;
             if (f > 16000 || f < 20)
                 continue;
             tm = t60 * clampi(d->mdec[k], 1, 200) / 100.0;
@@ -196,9 +204,12 @@ static void pm_prepare(pm_note_t *nt, const pm_design_t *d, int32_t note)
     if (d->model == PM_BANDED) {                                     /* one loop a mode, each with its band-pass */
         int32_t used = 0;
         for (k = 0; k < d->nmode && k < 4; k++) {
-            double f = f0 * d->ratio[k] / 1024.0, w = 6.283185307179586 * f / FS, r = 1 - 3.141592653589793 * 40.0 / FS;
-            int32_t len = (int32_t)(FS / f + 0.5);
-            if (len < 4 || used + len > (int32_t)PM_LEN || f > 15000)
+            pm_real f = f0 * d->ratio[k] / 1024.0, w = 6.283185307179586 * f / FS, r = 1 - 3.141592653589793 * 40.0 / FS;
+            int32_t len;
+            if (f < 20 || f > 15000)                                 /* (build 71: before any divide by it) */
+                break;
+            len = (int32_t)(FS / f + 0.5);
+            if (len < 4 || used + len > (int32_t)PM_LEN)
                 break;
             nt->seg[k] = len;
             used += len;
@@ -214,22 +225,22 @@ static void pm_prepare(pm_note_t *nt, const pm_design_t *d, int32_t note)
     if (d->model == PM_TUBE)
         L *= 0.5;                                                    /* (inverted: a round trip is half a period) */
     if (d->model == PM_STIFF || d->model == PM_GONG) {               /* StifKarp: four allpasses up from 2 f0 */
-        double stretch = 0.9 + 0.0999 * clampi(d->disp, 0, 100) / 100.0, rr = 0.5 + 0.5 * stretch;
-        double step = (FS / 2.0 - 2 * f0) / 4, w0 = 6.283185307179586 * f0 / FS;
+        pm_real stretch = 0.9 + 0.0999 * clampi(d->disp, 0, 100) / 100.0, rr = 0.5 + 0.5 * stretch;
+        pm_real step = (FS / 2.0 - 2 * f0) / 4, w0 = 6.283185307179586 * f0 / FS;
         if (rr > 0.99999)
             rr = 0.99999;
         for (k = 0; k < 4; k++) {
-            double fc = 2 * f0 + k * step, a1 = -2 * rr * pm_sincos(6.283185307179586 * fc / FS, 1), a2 = rr * rr;
+            pm_real fc = 2 * f0 + k * step, a1 = -2 * rr * pm_sincos(6.283185307179586 * fc / FS, 1), a2 = rr * rr;
             /* its phase delay at f0: an allpass's numerator is z^-2 times its denominator mirrored, so its phase is
              * -2 w - 2 arg D(e^jw), D = 1 + a1 e^-jw + a2 e^-2jw: the delay 2 + 2 arg D / w */
-            double cw = pm_sincos(w0, 1), sw = pm_sincos(w0, 0), c2w = pm_sincos(2 * w0, 1), s2w = pm_sincos(2 * w0, 0);
-            double dr = 1 + a1 * cw + a2 * c2w, di = -(a1 * sw + a2 * s2w), pd = 2 + 2 * pm_atan2(di, dr) / w0;
+            pm_real cw = pm_sincos(w0, 1), sw = pm_sincos(w0, 0), c2w = pm_sincos(2 * w0, 1), s2w = pm_sincos(2 * w0, 0);
+            pm_real dr = 1 + a1 * cw + a2 * c2w, di = -(a1 * sw + a2 * s2w), pd = 2 + 2 * pm_atan2(di, dr) / w0;
             ph += pd > 0 ? pd : 0;
             nt->ap[k][0] = pm_q30(a1);
             nt->ap[k][1] = pm_q30(a2);
         }
     }
-    if (L - 1 - ph > (double)PM_LEN - 4)                              /* too long for the line: an octave up */
+    if (L - 1 - ph > (pm_real)PM_LEN - 4)                              /* too long for the line: an octave up */
         L *= 0.5;
     if (L - 1 - ph < 3) {                                            /* (the stiffness ate the loop: less of it) */
         ph = L - 4;
@@ -284,7 +295,7 @@ static void pm_strike(pm_voice_t *v, const pm_note_t *nt, const pm_design_t *d, 
     len = mini(nt->n, (int32_t)PM_LEN - 2);
     pick = clampi(d->pick, 0, 100) * len / 200;                     /* (the comb: up to half way) */
     {
-        int16_t e[PM_LEN];
+        static int16_t e[PM_LEN];                                    /* (build 69: static, not 2 KB of the 4 KB stack) */
         for (j = 0; j < len; j++) {
             lp += mulq15(rnd_bi(r) - lp, k_lp);
             e[j] = nx_s16(mulq15(lp, lev));
