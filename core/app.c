@@ -6,15 +6,19 @@
  *   on the molecule     encoder turn: volume   press: a new molecule   held 0.8 s: the menu
  *                       left button: the molecule rewired (the same atoms, bound anew); held 0.8 s: the LFOs
  *                       (the generator's and the atoms') anew
- *                       right button: the atoms' values anew; held 0.8 s: MOTION on or off (motion.c)
+ *                       right button: the atoms' values anew (gliding there over FX MORPH's seconds); held 0.8 s:
+ *                       MOTION on or off (motion.c)
  *                       (the side buttons act at their release, or at 0.8 s held; both held: neither, as both
  *                       held 3 s hand over to update mode)
- *   in the menu         one item at a time, SETTINGS, PATCHES, POWER; turn: the next; press: do it; held: back
+ *   in the menu         one item at a time, SETTINGS, PATCHES, POWER, opening on the one last gone into (build 75);
+ *                       turn: the next; press: do it; held: back
  *                       SETTINGS: the patch's own, a page each: MOTION RATE (events a minute), MIX (the effects'
- *                       share, 0 .. 100 %, 5 a detent); turn: the value; press: the next page (after the last,
+ *                       share, 0 .. 100 %, 5 a detent), FX MORPH (build 75: the right button's new values reached
+ *                       over 0 .. 30 seconds; 0 at once); turn: the value; press: the next page (after the last,
  *                       back); held or a side button: back
- *                       PATCHES: the slots, four a row, numbered; turn: choose; press: the patch there loaded;
- *                       held: the molecule saved there (a filled slot written over); a side button: back
+ *                       PATCHES: the 100 slots, 0 .. 99, four a row, three rows shown (the chosen one's in view);
+ *                       opening on the slot last chosen; turn: choose; press: the patch there loaded; held: the
+ *                       molecule saved there (a filled slot written over); a side button: back
  *                       POWER: POWER OFF?  NO / YES (NO first); turn: choose; press: do it
  *
  * The platform feeds events (app_left .. app_release) and calls app_tick and app_draw from its main loop. app_tick
@@ -28,7 +32,7 @@
 
 enum { SC_ASLEEP, SC_WAKE, SC_MOL, SC_MENU, SC_SLOTS, SC_CONFIRM, SC_OFF, SC_SETTINGS };
 enum { MI_SETTINGS, MI_PATCHES, MI_POWER, MI_N };
-enum { SET_MOTION, SET_MIX, SET_N };     /* SETTINGS' pages */
+enum { SET_MOTION, SET_MIX, SET_MORPH, SET_N };     /* SETTINGS' pages */
 enum { OV_NONE, OV_TEXT, OV_VOL };
 
 /* the kinds' colours by family, bright behind black letters: the generator yellow; filters and formants cyan;
@@ -62,9 +66,11 @@ static struct {
     uint32_t ov_until;
     int want_family;             /* show the patch's family once the new molecule is drawn */
     int item;                    /* the menu's: MI_* */
-    int32_t slot;                /* PATCHES: the chosen slot */
+    int last_item;               /* .. the one last gone into: the menu opens on it */
+    int32_t slot;                /* PATCHES: the chosen slot (kept: the next time opens on it) */
+    int32_t top;                 /* .. the first row shown */
     int32_t page;                /* SETTINGS: SET_* */
-    uint32_t used;               /* .. and those that hold a patch, a bit each */
+    uint8_t used[PATCH_MAP_BYTES];   /* the slots that hold a patch, a bit each */
     int side_down[2];            /* the left, the right button held */
     int side_fired[2];           /* .. and its long press already acted */
     uint32_t side_at[2];
@@ -130,10 +136,21 @@ static void app_init(uint32_t entropy, uint32_t now, int held)
     app.held_fired = held;                           /*  must not answer the question) */
 }
 
+/* PATCHES: the rows shown scrolled to keep the chosen slot in view (three rows of four) */
+#define SL_ROWS 3
+static void app_slot_view(void)
+{
+    int32_t row = app.slot / 4;
+    if (row < app.top)
+        app.top = row;
+    else if (row >= app.top + SL_ROWS)
+        app.top = row - SL_ROWS + 1;
+}
+
 /* "WORD 12" into the overlay */
 static void app_say_slot(const char *w, uint32_t now)
 {
-    uint32_t n = (uint32_t)app.slot + 1u, k = 0;
+    uint32_t n = (uint32_t)app.slot, k = 0;
     while (*w)
         app.ov_buf[k++] = *w++;
     if (n >= 10u)
@@ -169,7 +186,8 @@ static void app_side_up(int b, uint32_t now)
     if (b == 0)
         app_overlay(OV_TEXT, mol_rewire(rnd_next(&app.r), mot.on) ? "REWIRE" : "NO REWIRE", now);
     else {
-        mol_shake_fx(rnd_next(&app.r));
+        motion_hold_values();                        /* (MOTION's glides stop where they are: these take over) */
+        mol_shake_fx(rnd_next(&app.r), now);
         app_overlay(OV_TEXT, "FX", now);
     }
 }
@@ -199,13 +217,17 @@ static void app_turn(int32_t d, uint32_t now)
         app_overlay(OV_VOL, 0, now);
     } else if (app.screen == SC_MENU)
         app.item = clampi(app.item + d, 0, MI_N - 1);
-    else if (app.screen == SC_SLOTS)
+    else if (app.screen == SC_SLOTS) {
         app.slot = clampi(app.slot + d, 0, (int32_t)PATCH_SLOTS - 1);
+        app_slot_view();
+    }
     else if (app.screen == SC_SETTINGS) {
         if (app.page == SET_MOTION)
             motion_rate_step(d);
-        else                                         /* MIX: 5 % a detent */
+        else if (app.page == SET_MIX)                /* MIX: 5 % a detent */
             mol_d.mix = (uint8_t)(clampi((int32_t)mol_mix() + 5 * d, 0, 100) + 1);
+        else                                         /* FX MORPH: a second a detent */
+            mol_d.fx_morph = (uint8_t)clampi((int32_t)mol_d.fx_morph + d, 0, MOL_FX_MORPH_MAX);
     }
     else if ((app.screen == SC_CONFIRM || app.screen == SC_WAKE) && d) {
         app.yes = d > 0;
@@ -237,13 +259,13 @@ static void app_release(uint32_t now)
         app_new_molecule();
         break;
     case SC_MENU:
+        app.last_item = app.item;
         if (app.item == MI_SETTINGS) {
             app.screen = SC_SETTINGS;
             app.page = SET_MOTION;
         }
         else if (app.item == MI_PATCHES) {
-            app.used = patch_used_mask();
-            app.slot = 0;
+            patch_used_map(app.used);
             app.screen = SC_SLOTS;
         } else {
             app.screen = SC_CONFIRM;
@@ -282,7 +304,7 @@ static int app_tick(uint32_t now)
             app_ask_power_on(now);
         else if (app.screen == SC_MOL) {
             app.screen = SC_MENU;
-            app.item = MI_SETTINGS;
+            app.item = app.last_item;                /* (build 75: the item last gone into) */
             app.ov = OV_NONE;
         } else if (app.screen == SC_SLOTS) {         /* held on a slot: the molecule saved there */
             app_say_slot(patch_save((uint32_t)app.slot) ? "SAVED " : "FAILED ", now);
@@ -308,6 +330,7 @@ static int app_tick(uint32_t now)
     if (app.ov && (int32_t)(now - app.ov_until) >= 0)
         app.ov = OV_NONE;
     silent = mol_poll();
+    mol_fx_tick(now);
     if (app.screen != SC_OFF)
         motion_tick(now);
     /* 0.56: never silent (the audio stopped: no fade ends) still powers off, 2 s later */
@@ -412,8 +435,8 @@ static void draw_menu(void)
     }
 }
 
-/* PATCHES: its word above, the slots four a row, numbered: an empty one outlined, a filled one solid white; the chosen
- * one ringed in yellow */
+/* PATCHES: its word above, the slots four a row, three rows of the 25 shown (scrolled to keep the chosen one in view),
+ * numbered 0 .. 99: an empty one outlined, a filled one solid white; the chosen one ringed in yellow */
 #define SL_SQ 32
 #define SL_GX 6
 #define SL_GY 4
@@ -421,17 +444,17 @@ static void draw_menu(void)
 #define SL_Y 20
 static void draw_slots(void)
 {
-    uint32_t i;
+    int32_t i;
     gfx_clear(C_BLACK);
     gfx_text_c(SCR_W / 2, 2, "PATCHES", 2, C_WHITE);
-    for (i = 0; i < PATCH_SLOTS; i++) {
-        int32_t x = SL_X + (int32_t)(i % 4u) * (SL_SQ + SL_GX), y = SL_Y + (int32_t)(i / 4u) * (SL_SQ + SL_GY);
-        int used = (app.used >> i) & 1u;
+    for (i = app.top * 4; i < (app.top + SL_ROWS) * 4 && i < (int32_t)PATCH_SLOTS; i++) {
+        int32_t x = SL_X + (i % 4) * (SL_SQ + SL_GX), y = SL_Y + (i / 4 - app.top) * (SL_SQ + SL_GY);
+        int used = (app.used[i >> 3] >> (i & 7)) & 1;
         char num[3];
-        num[0] = i + 1u >= 10u ? '1' : (char)('1' + i);
-        num[1] = i + 1u >= 10u ? (char)('0' + (i + 1u) % 10u) : 0;
+        num[0] = i >= 10 ? (char)('0' + i / 10) : (char)('0' + i);
+        num[1] = i >= 10 ? (char)('0' + i % 10) : 0;
         num[2] = 0;
-        if ((int32_t)i == app.slot)
+        if (i == app.slot)
             gfx_frame(x - 3, y - 3, SL_SQ + 6, SL_SQ + 6, 3, C_GEN);
         if (used)
             gfx_rect(x, y, SL_SQ, SL_SQ, C_WHITE);
@@ -442,11 +465,11 @@ static void draw_slots(void)
 }
 
 /* SETTINGS: one of the patch's settings a page, its value large, the turn's way shown by the arrows either side, the
- * dots below: which page. MOTION RATE (events a minute), MIX (the effects' share, %) */
+ * dots below: which page. MOTION RATE (events a minute), MIX (the effects' share, %), FX MORPH (seconds) */
 static void draw_settings(void)
 {
-    static const char *const TITLE[SET_N] = {"MOTION RATE", "MIX"};
-    static const char *const UNIT[SET_N] = {"A MINUTE", "% WET"};
+    static const char *const TITLE[SET_N] = {"MOTION RATE", "MIX", "FX MORPH"};
+    static const char *const UNIT[SET_N] = {"A MINUTE", "% WET", "SECONDS"};
     char num[4];
     uint32_t v, k = 0;
     int lower, higher;
@@ -456,10 +479,14 @@ static void draw_settings(void)
         v = motion_rate();
         lower = i > 0;
         higher = i + 1u < MOTION_NRATES;
-    } else {
+    } else if (app.page == SET_MIX) {
         v = mol_mix();
         lower = v > 0;
         higher = v < 100u;
+    } else {
+        v = mol_d.fx_morph;
+        lower = v > 0;
+        higher = v < MOL_FX_MORPH_MAX;
     }
     gfx_clear(C_BLACK);
     gfx_frame(6, 4, SCR_W - 12, SCR_H - 8, 4, C_MOD);

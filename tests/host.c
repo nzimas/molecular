@@ -12,24 +12,44 @@
 static int fails;
 #define CHECK(c, ...) do { if (!(c)) { fails++; printf("FAIL: " __VA_ARGS__); printf("\n"); } } while (0)
 
-/* the patches' store: in memory, as erased flash */
-static uint8_t store[PATCH_SLOTS][4096];
-static int plat_patch_read(uint32_t slot, void *buf, uint32_t n)
+/* 1 if the slots' map holds slot only (-1: none) */
+static int map_is(const uint8_t *m, int32_t only)
 {
-    if (slot >= PATCH_SLOTS || n > sizeof store[0])
-        return -1;
-    memcpy(buf, store[slot], n);
-    return 0;
-}
-static int plat_patch_write(uint32_t slot, const void *buf, uint32_t n)
-{
-    if (slot >= PATCH_SLOTS || n > sizeof store[0])
-        return -1;
-    memset(store[slot], 0xFF, sizeof store[0]);
-    memcpy(store[slot], buf, n);
-    return 0;
+    uint32_t i;
+    for (i = 0; i < PATCH_SLOTS; i++)
+        if ((int32_t)(m[i >> 3] >> (i & 7u) & 1u) != ((int32_t)i == only))
+            return 0;
+    return 1;
 }
 
+/* the patches' flash: in memory, as NOR flash (erased: 0xFF; written: bits to 0 only). pf_ops_left: the power cut
+ * after that many erases and writes (-1: never) */
+static uint8_t pf_mem[0x10000];
+static int32_t pf_ops_left = -1;
+static int pf_power(void) { return pf_ops_left < 0 || pf_ops_left-- > 0; }
+static int plat_flash_read(uint32_t off, void *buf, uint32_t n)
+{
+    if (off > sizeof pf_mem || n > sizeof pf_mem - off)
+        return -1;
+    memcpy(buf, pf_mem + off, n);
+    return 0;
+}
+static int plat_flash_erase(uint32_t off)
+{
+    if (off >= sizeof pf_mem || (off & 4095u) || !pf_power())
+        return -1;
+    memset(pf_mem + off, 0xFF, 4096u);
+    return 0;
+}
+static int plat_flash_program(uint32_t off, const void *buf, uint32_t n)
+{
+    uint32_t i;
+    if (off > sizeof pf_mem || n > sizeof pf_mem - off || !pf_power())
+        return -1;
+    for (i = 0; i < n; i++)
+        pf_mem[off + i] &= ((const uint8_t *)buf)[i];
+    return 0;
+}
 
 /* --------------------------------------------------------- PNG and WAV --- */
 static uint32_t crc_tab[256];
@@ -310,7 +330,7 @@ static double render(uint32_t seed, int shake)
     for (b = 0; b < nb; b++) {
         if (shake && b == nb / 2u) {
             mol_shake_lfos(seed * 7u);
-            mol_shake_fx(seed * 13u);
+            mol_shake_fx(seed * 13u, 0);
         }
         mol_block(wav + b * 2u * CTL);
     }
@@ -568,8 +588,42 @@ static void test_flows(void)
     CHECK(mol_mix() == 0u, "MIX below 0");
     shot("09a5_settings_mix_0");
     app_turn(8, now_ms);
-    press_short();                                      /* back to the molecule, both kept */
-    CHECK(app.screen == SC_MOL && mol_d.motion_rate == 30u && mol_mix() == 40u, "SETTINGS did not keep 30 a minute, 40 %%");
+    press_short();                                      /* the next page: FX MORPH, 0 s to begin with */
+    CHECK(app.screen == SC_SETTINGS && app.page == SET_MORPH && mol_d.fx_morph == 0u, "the third page is not FX MORPH at 0");
+    shot("09a6_settings_morph_0");
+    app_turn(40, now_ms);
+    run_ms(50);
+    CHECK(mol_d.fx_morph == 30u, "FX MORPH past 30 s");
+    shot("09a7_settings_morph_30");
+    app_turn(-25, now_ms);
+    press_short();                                      /* back to the molecule, all three kept */
+    CHECK(app.screen == SC_MOL && mol_d.motion_rate == 30u && mol_mix() == 40u && mol_d.fx_morph == 5u,
+          "SETTINGS did not keep 30 a minute, 40 %%, 5 s");
+    {                                                   /* the right button now glides there over 5 s */
+        mol_shape_t prev;
+        uint32_t t, i, k, mid = 0;
+        side_short(1);
+        CHECK(mol_fxg.on, "FX MORPH 5 s: the right button did not glide");
+        for (t = 0; t < 160u; t++) {                    /* 5.1 s, frame by frame */
+            prev = mol_d.shape;
+            run_ms(32);
+            for (i = 1; i < mol_d.shape.n; i++)
+                for (k = 0; k < 4u; k++) {
+                    int32_t d = absi(prev.node[i].p[k] - mol_d.shape.node[i].p[k]);
+                    uint32_t ok = fx_heavy(mol_d.shape.node[i].kind) ? 0xFu : FX_LFO_OK[mol_d.shape.node[i].kind];
+                    if (ok >> k & 1u)
+                        CHECK(d <= 2, "FX MORPH: atom %u value %u jumped %d in a frame", i, k, d);
+                    if (t == 78u && mol_fxg.from[i][k] != mol_fxg.to[i][k] && (ok >> k & 1u) &&
+                        mol_d.shape.node[i].p[k] != mol_fxg.from[i][k] && mol_d.shape.node[i].p[k] != mol_fxg.to[i][k])
+                        mid = 1;
+                }
+        }
+        CHECK(mid, "FX MORPH: halfway, no value was on its way");
+        CHECK(!mol_fxg.on, "FX MORPH: still gliding after 5 s");
+        for (i = 1; i < mol_d.shape.n; i++)
+            CHECK(!memcmp(mol_d.shape.node[i].p, mol_fxg.to[i], sizeof mol_fxg.to[i]), "FX MORPH: atom %u not there", i);
+        CHECK(ATOMIC_GET(mol_phase) == MP_RUN, "FX MORPH faded the sound");
+    }
     {                                                   /* MOTION: the right button held */
         mol_shape_t before = mol_d.shape;
         uint32_t t, ev0 = mot.events, moved = 0, changed = 0, shapes0 = mol_shapes;
@@ -638,23 +692,24 @@ static void test_flows(void)
         CHECK(!memcmp(&before, &mol_d.shape, sizeof before), "stopped, MOTION still moved the molecule");
     }
     press_long();
+    CHECK(app.item == MI_SETTINGS, "the menu did not open on SETTINGS, the item last gone into");
     app_turn(1, now_ms);
     run_ms(50);
     CHECK(app.item == MI_PATCHES, "turning did not reach PATCHES");
     shot("09c_menu_patches");
     press_short();                                      /* PATCHES: the slots, none filled yet */
-    CHECK(app.screen == SC_SLOTS && app.slot == 0 && !app.used, "PATCHES did not show empty slots");
+    CHECK(app.screen == SC_SLOTS && app.slot == 0 && map_is(app.used, -1), "PATCHES did not show empty slots");
     shot("09d_slots_empty");
     press_short();                                      /* a short press on an empty slot: EMPTY, stays */
-    CHECK(app.screen == SC_SLOTS && app.ov == OV_TEXT && !strcmp(app.ov_text, "EMPTY 1"), "an empty slot said %s",
+    CHECK(app.screen == SC_SLOTS && app.ov == OV_TEXT && !strcmp(app.ov_text, "EMPTY 0"), "an empty slot said %s",
           app.ov_text);
     shot("09d2_slot_empty_said");
     app_turn(5, now_ms);
     run_ms(50);
     CHECK(app.slot == 5, "slot %d after five turns", app.slot);
-    press_long();                                       /* held on slot 6: saved */
-    CHECK(app.screen == SC_MOL && !strcmp(app.ov_text, "SAVED 6"), "saving to slot 6 said %s", app.ov_text);
-    CHECK(patch_used(5) && !memcmp(&patch_buf.d, &mol_d, sizeof mol_d), "slot 6 does not hold the molecule");
+    press_long();                                       /* held on slot 5: saved */
+    CHECK(app.screen == SC_MOL && !strcmp(app.ov_text, "SAVED 5"), "saving to slot 5 said %s", app.ov_text);
+    CHECK(patch_used(5) && !memcmp(&patch_buf.d, &mol_d, sizeof mol_d), "slot 5 does not hold the molecule");
     shot("09e_saved");
     {
         static mol_design_t saved;
@@ -662,37 +717,45 @@ static void test_flows(void)
         press_short();                                  /* another molecule, then slot 6 loaded: the saved one back */
         run_ms(1500);
         CHECK(memcmp(&saved, &mol_d, sizeof saved), "a short press did not change the molecule");
-        press_long();
-        app_turn(1, now_ms);
+        press_long();                                   /* the menu opens on PATCHES, the slots on slot 5 */
+        CHECK(app.item == MI_PATCHES, "the menu did not open on PATCHES, the item last gone into");
         press_short();
-        CHECK(app.used == 1u << 5, "the slots read back as %x", app.used);
-        app_turn(5, now_ms);
+        CHECK(map_is(app.used, 5), "the slots did not read back as slot 5 alone");
+        CHECK(app.slot == 5, "the slots opened on %d, not on 5, the slot last chosen", app.slot);
         run_ms(50);
         shot("09f_slots_one_filled");
         press_short();
         run_ms(500);
-        CHECK(app.screen == SC_MOL && !strcmp(app.ov_text, "LOADED 6"), "loading slot 6 said %s", app.ov_text);
+        CHECK(app.screen == SC_MOL && !strcmp(app.ov_text, "LOADED 5"), "loading slot 5 said %s", app.ov_text);
         CHECK(!memcmp(&saved, &mol_d, sizeof saved) && ATOMIC_GET(mol_phase) == MP_RUN,
-              "slot 6 did not bring the saved molecule back, sounding");
+              "slot 5 did not bring the saved molecule back, sounding");
         shot("09f2_loaded");
     }
     press_long();
-    app_turn(1, now_ms);
     press_short();
-    app_turn(11, now_ms);
+    app_turn(37, now_ms);
     run_ms(50);
-    CHECK(app.slot == (int32_t)PATCH_SLOTS - 1, "turning past the last slot");
+    CHECK(app.slot == 42 && app.top == 8, "slot %d (row %d first) after 37 turns", app.slot, app.top);
+    shot("09h_slots_42");
+    app_turn(200, now_ms);
+    run_ms(50);
+    CHECK(app.slot == (int32_t)PATCH_SLOTS - 1 && app.slot == 99, "turning past the last slot");
+    shot("09i_slots_99");
     app_right(now_ms);                                  /* a side button: back, nothing saved */
     run_ms(50);
-    CHECK(app.screen == SC_MOL && patch_used_mask() == 1u << 5, "a side button in the slots saved or stayed");
+    {
+        static uint8_t m[PATCH_MAP_BYTES];
+        patch_used_map(m);
+        CHECK(app.screen == SC_MOL && map_is(m, 5), "a side button in the slots saved or stayed");
+    }
     {                                                   /* an older record, shorter, still loads: the rest zero */
-        static uint8_t keep[4096];
-        patch_rec_t *rec = (patch_rec_t *)store[5];
-        memcpy(keep, store[5], sizeof keep);
+        static uint8_t keep[PATCH_REC_MAX];
+        patch_rec_t *rec = (patch_rec_t *)(pf_mem + patch_off(5));
+        memcpy(keep, rec, sizeof keep);
         rec->len = (uint16_t)(sizeof rec->d - 8u);
         rec->check = patch_check(&rec->d, rec->len);
         CHECK(patch_used(5), "a shorter record read as empty");
-        memcpy(store[5], keep, sizeof keep);
+        memcpy(rec, keep, sizeof keep);
     }
     press_long();
     app_turn(5, now_ms);
@@ -739,6 +802,67 @@ static void test_flows(void)
     printf("flows: the controls and screens as designed; screens in build/screens\n");
 }
 
+/* the patches' store: 100 slots in 64 KB, the twelve of builds up to 74 where they were, the neighbours kept through
+ * a save, and a save cut short by the power at any step finished or undone whole at the next start */
+static void test_patches(void)
+{
+    static mol_design_t keep;
+    static uint8_t m[PATCH_MAP_BYTES];
+    uint32_t i, cut, cuts = 0;
+    memcpy(&keep, &mol_d, sizeof keep);
+    memset(pf_mem, 0xFF, sizeof pf_mem);
+    for (i = 0; i < 12u; i++) {                         /* builds up to 74: slot i at sector i's start */
+        patch_rec_t *rec = (patch_rec_t *)(pf_mem + i * 4096u);
+        memset(rec, 0, sizeof *rec);
+        rec->magic = PATCH_MAGIC;
+        rec->ver = 2;
+        rec->len = (uint16_t)sizeof rec->d;
+        rec->d = keep;
+        rec->d.seed = 1000u + i;
+        rec->check = patch_check(&rec->d, rec->len);
+    }
+    for (i = 0; i < 12u; i++)
+        CHECK(patch_used(i) && patch_buf.d.seed == 1000u + i, "an older build's slot %u lost", i);
+    patch_used_map(m);
+    for (i = 12; i < PATCH_SLOTS; i++)
+        CHECK(!(m[i >> 3] >> (i & 7u) & 1u), "slot %u not empty", i);
+    for (i = 0; i < PATCH_SLOTS; i++) {                 /* all 100 written, each read back as itself */
+        mol_d.seed = 5000u + i;
+        CHECK(patch_save(i), "slot %u not saved", i);
+    }
+    for (i = 0; i < PATCH_SLOTS; i++)
+        CHECK(patch_used(i) && patch_buf.d.seed == 5000u + i, "slot %u lost after all 100 saved", i);
+    CHECK(!patch_save(PATCH_SLOTS), "slot 100 saved");
+    for (cut = 0; cut < 400u; cut++) {                  /* the power cut after each step of a save to slot 37 */
+        static uint8_t before[sizeof pf_mem];
+        int done;
+        memcpy(before, pf_mem, sizeof pf_mem);
+        mol_d.seed = 9000u + cut;
+        pf_ops_left = (int32_t)cut;
+        done = patch_save(37);
+        if (pf_ops_left >= 0 && done)                   /* (the save finished before the cut: all steps tried) */
+            break;
+        pf_ops_left = -1;
+        patch_recover();
+        cuts++;
+        for (i = 0; i < PATCH_SLOTS; i++)
+            if (i != 37u)
+                CHECK(patch_used(i) && patch_buf.d.seed == 5000u + i, "cut after %u steps: slot %u lost", cut, i);
+        CHECK(patch_used(37) && (patch_buf.d.seed == 5000u + 37u || patch_buf.d.seed == 9000u + cut),
+              "cut after %u steps: slot 37 neither the old patch nor the new", cut);
+        if (patch_used(37) && patch_buf.d.seed != 5000u + 37u) {   /* (the new one kept: the old one back for the next) */
+            mol_d.seed = 5000u + 37u;
+            patch_save(37);
+        }
+    }
+    pf_ops_left = -1;
+    CHECK(cuts > 50u, "a save took only %u steps", cuts);
+    printf("patches: 100 slots in 64 KB (%u B a record), the older twelve kept, a save cut short at any of %u steps "
+           "kept every other slot\n", (unsigned)sizeof(patch_rec_t), cuts);
+    memset(pf_mem, 0xFF, sizeof pf_mem);
+    memcpy(&mol_d, &keep, sizeof keep);
+}
+
 static void test_font(void)
 {
     gfx_clear(C_BLACK);
@@ -752,13 +876,14 @@ static void test_font(void)
 
 int main(void)
 {
-    memset(store, 0xFF, sizeof store);
+    memset(pf_mem, 0xFF, sizeof pf_mem);
     setvbuf(stdout, NULL, _IONBF, 0);   /* (each line as it happens: a hang shows where) */
     test_shapes();
     test_atoms();
     test_families();
     test_sound();
     test_flows();
+    test_patches();
     test_font();
     printf("memory: design %zu B, generator %zu B, atoms %zu B, atoms' arena %zu B, delay %zu B, reverb %zu B, "
            "frame %zu B, a patch %zu B\n", sizeof mol_d, sizeof mol_gs, sizeof mol_fs, sizeof fx_arena, sizeof dl_a, sizeof rv_mem,

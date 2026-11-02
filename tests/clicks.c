@@ -7,8 +7,9 @@
 #include "../core/molecular.c"
 #define SECS 10u
 static int16_t wav[FS * SECS * 2u];
-static int plat_patch_read(uint32_t slot, void *buf, uint32_t n) { return -1; }
-static int plat_patch_write(uint32_t slot, const void *buf, uint32_t n) { return -1; }
+static int plat_flash_read(uint32_t off, void *buf, uint32_t n) { return -1; }
+static int plat_flash_erase(uint32_t off) { return -1; }
+static int plat_flash_program(uint32_t off, const void *buf, uint32_t n) { return -1; }
 static int cmpu(const void *a, const void *b) { uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b; return x < y ? -1 : x > y; }
 static uint32_t d2[FS * SECS], phase_hist[CTL];
 int main(int argc, char **argv)

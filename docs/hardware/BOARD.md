@@ -10,7 +10,7 @@ section `b`; the code runs at offset + 0x10000.
 |---|---|
 | 0x000000 - 0x00FFFF | Sonicake's **flash_boot** (MVsilicon's bootloader, customised). Not in any update file: updates never write it. |
 | 0x010000 - ... | the application = HTFW section `b` (linked at 0x10000; the ROM header fields at 0x100B0..0x100D7) |
-| 0x170000 - 0x17FFFF | Molecular's patches (0.54): a 4 KB sector a slot. Past stock's application (ends ~0x15BB60) and no stock code refers to it; stock erases only 0x180000 - 0x18FFFF, 0x1E1000, 0x1F3000 - 0x1FFFFF (its SpiFlashErase at image 0x1482, sector erase = type 1, with suspend) |
+| 0x170000 - 0x17FFFF | Molecular's patches (0.54): a 4 KB sector a slot; build 75: 100 slots, seven a sector in sectors 0 .. 14 (slot s in sector s % 15), sector 15 the spare a save goes through (core/patch.c). Past stock's application (ends ~0x15BB60) and no stock code refers to it; stock erases only 0x180000 - 0x18FFFF, 0x1E1000, 0x1F3000 - 0x1FFFFF (its SpiFlashErase at image 0x1482, sector erase = type 1, with suspend) |
 | 0x190000 - | section `e`, the factory presets, then stock's own saves (above) |
 
 - The chip's **mask ROM** boots first, then flash_boot, which runs the application at 0x10000 unless asked to upgrade.

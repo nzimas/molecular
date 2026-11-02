@@ -3,6 +3,18 @@
 Versions are build numbers, as in the other firmwares (build 64 was first called 0.64; the comments in the code
 still name the builds that way).
 
+## Build 75: a hundred patches, the menu remembers, FX MORPH
+- PATCHES has 100 slots, 0 to 99 (three rows of four on the screen, scrolling to the chosen one). They fit in the
+  same 64 KB of flash, seven to a 4 KB sector; slots 0 to 11 are exactly where builds up to 74 kept their twelve, so
+  saved patches stay (numbered from 0 now: the old slot 1 is slot 0). A save rewrites its sector through a spare
+  sector, marked and checked, so a save cut short by the power is finished at the next start and never touches the
+  other slots (the host tests cut the power at each of a save's 111 steps).
+- The menu opens on the item last gone into (PATCHES, for instance), and the slots on the slot last chosen.
+- SETTINGS has a third page, FX MORPH, 0 to 30 seconds: the right button's new values glide there from where they
+  are over that time (switches change halfway; DELAY's and REVERB's values glide too). Saved with the patch; 0, at
+  once, for an older patch. A rewiring or MOTION's growing and pruning keep the glide going; MOTION's own value
+  glides give way to it.
+
 ## Build 74: hardware loops switched on
 - The scrambled screen, sound and log after an install: the compiler turns many loops into the chip's hardware loops
   (zero-overhead loops, part of its audio extension), which work only with PSW.AEN set. Nothing in Molecular set it:

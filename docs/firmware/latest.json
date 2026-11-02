@@ -1,8 +1,8 @@
 {
-  "version": "74",
-  "file": "molecular-74.bin",
-  "size": 236848,
-  "sha256": "73c33d8c9f9c0a3aaf6baa909c3bbbd8290c7e105b0df3593a12c57a83404ca3",
+  "version": "75",
+  "file": "molecular-75.bin",
+  "size": 238032,
+  "sha256": "b2ed13f9af3c18cc499094c6317cddc5d6a90f30269cd77a8eceb5638395d635",
   "section": "b",
   "note": "Molecular's application: the update's section b only (Sonicake's other sections stay on the pedal)"
 }

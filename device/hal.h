@@ -30,10 +30,11 @@ extern uint32_t hal_dma_left[8][2], hal_dma_nleft;
 extern volatile uint32_t hal_watch;
 void hal_render(void);                  /* fills the audio ring; call often from the main loop */
 int hal_sides_held(void);               /* both side keys down */
-#define HAL_PATCH_BASE 0x170000u        /* the patches' flash: a 4 KB sector a slot */
-#define HAL_PATCH_SLOTS 16u             /* (room kept; the core uses PATCH_SLOTS of them) */
+#define HAL_PATCH_BASE 0x170000u        /* the patches' flash: 64 KB (core/patch.c lays the slots out) */
+#define HAL_PATCH_BYTES 0x10000u
 int hal_flash_read(uint32_t addr, void *buf, uint32_t n);
-int hal_flash_write(uint32_t addr, const void *buf, uint32_t n);   /* one sector, erased first */
+int hal_flash_erase(uint32_t addr);     /* the 4 KB sector at addr, in the patches' flash only */
+int hal_flash_program(uint32_t addr, const void *buf, uint32_t n);   /* .. and there only */
 void hal_audio(hal_block_fn fn);
 int hal_event(void);
 uint32_t hal_ms(void);

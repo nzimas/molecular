@@ -674,20 +674,32 @@ int hal_init(uint32_t held_mask)
 
 void hal_audio(hal_block_fn fn) { audio_fn = fn; }
 /* 0.50: 1 while both side keys are down (debounced): held 3 s, main hands over to update mode */
-/* the patches' flash (main loop): HAL_PATCH_BASE, a 4 KB sector a slot, past the application (verify.py keeps the
- * image below it) and outside every range stock erases (its saves: 0x180000 .. 0x18FFFF, 0x1E1000, 0x1F3000 ..
- * 0x1FFFFF). The flash driver runs from the TCM (Remap_InitTcm); an erase is suspended for the interrupts, as stock
- * erases (SpiFlashErase(1, sector, 1)); the ring is topped up first (an erase takes tens of ms, the ring 93) */
+/* the patches' flash (main loop): the 64 KB from HAL_PATCH_BASE (core/patch.c lays the slots out in it), past the
+ * application (verify.py keeps the image below it) and outside every range stock erases (its saves: 0x180000 ..
+ * 0x18FFFF, 0x1E1000, 0x1F3000 .. 0x1FFFFF). Nothing is erased or written outside it. The flash driver runs from the
+ * TCM (Remap_InitTcm); an erase is suspended for the interrupts, as stock erases (SpiFlashErase(1, sector, 1)); the
+ * ring is topped up first (an erase takes tens of ms, the ring 93) */
+static int hal_patch_range(uint32_t addr, uint32_t n)
+{
+    return addr >= HAL_PATCH_BASE && n <= HAL_PATCH_BYTES && addr - HAL_PATCH_BASE <= HAL_PATCH_BYTES - n;
+}
 int hal_flash_read(uint32_t addr, void *buf, uint32_t n)
 {
     return SpiFlashRead(addr, (uint8_t *)buf, n, 10) == FLASH_NONE_ERR ? 0 : -1;
 }
-int hal_flash_write(uint32_t addr, const void *buf, uint32_t n)
+int hal_flash_erase(uint32_t addr)
 {
-    if (addr < HAL_PATCH_BASE || addr + n > HAL_PATCH_BASE + HAL_PATCH_SLOTS * 4096u || (addr & 4095u) || n > 4096u)
+    if (!hal_patch_range(addr, 4096u) || (addr & 4095u))
         return -1;
     hal_render();
     SpiFlashErase(SECTOR_ERASE, addr >> 12, 1);
+    hal_render();
+    return 0;
+}
+int hal_flash_program(uint32_t addr, const void *buf, uint32_t n)
+{
+    if (!hal_patch_range(addr, n))
+        return -1;
     hal_render();
     return SpiFlashWrite(addr, (uint8_t *)buf, n, 0) == FLASH_NONE_ERR ? 0 : -1;
 }

@@ -16,8 +16,11 @@
 
 #define ZOOM 4
 
-/* the patches' store: one file, a 4 KB record a slot, in SDL's place for the user's files */
-#define SLOT_BYTES 4096u
+/* the patches' flash (core/patch.c): one file of 64 KB, read and written whole, as NOR flash (erased: 0xFF; written:
+ * bits to 0 only), in SDL's place for the user's files. An older file (builds up to 74: a 4 KB record a slot) reads as
+ * it was: those slots are where they were */
+#define PF_BYTES 0x10000u
+static uint8_t pf_mem[PF_BYTES];
 static FILE *patch_file(const char *mode)
 {
     static char path[512];
@@ -28,29 +31,47 @@ static FILE *patch_file(const char *mode)
     }
     return fopen(path, mode);
 }
-static int plat_patch_read(uint32_t slot, void *buf, uint32_t n)
+static void pf_load(void)
 {
     FILE *f = patch_file("rb");
-    int ok;
-    if (!f)
-        return -1;
-    ok = n <= SLOT_BYTES && !fseek(f, (long)(slot * SLOT_BYTES), SEEK_SET) && fread(buf, 1, n, f) == n;
-    fclose(f);
-    return ok ? 0 : -1;
+    memset(pf_mem, 0xFF, sizeof pf_mem);
+    if (f) {
+        size_t n = fread(pf_mem, 1, sizeof pf_mem, f);
+        (void)n;
+        fclose(f);
+    }
 }
-static int plat_patch_write(uint32_t slot, const void *buf, uint32_t n)
+static int pf_store(void)
 {
-    static uint8_t rec[SLOT_BYTES];
-    FILE *f = patch_file("r+b");
-    int ok;
-    if (!f)
-        f = patch_file("w+b");
-    if (!f || n > SLOT_BYTES)
+    FILE *f = patch_file("wb");
+    int ok = f && fwrite(pf_mem, 1, sizeof pf_mem, f) == sizeof pf_mem;
+    return (f && fclose(f)) || !ok ? -1 : 0;
+}
+static int plat_flash_read(uint32_t off, void *buf, uint32_t n)
+{
+    if (off > PF_BYTES || n > PF_BYTES - off)
         return -1;
-    memset(rec, 0xFF, sizeof rec);
-    memcpy(rec, buf, n);
-    ok = !fseek(f, (long)(slot * SLOT_BYTES), SEEK_SET) && fwrite(rec, 1, sizeof rec, f) == sizeof rec;
-    return fclose(f) || !ok ? -1 : 0;
+    pf_load();
+    memcpy(buf, pf_mem + off, n);
+    return 0;
+}
+static int plat_flash_erase(uint32_t off)
+{
+    if (off >= PF_BYTES || (off & 4095u))
+        return -1;
+    pf_load();
+    memset(pf_mem + off, 0xFF, 4096u);
+    return pf_store();
+}
+static int plat_flash_program(uint32_t off, const void *buf, uint32_t n)
+{
+    uint32_t i;
+    if (off > PF_BYTES || n > PF_BYTES - off)
+        return -1;
+    pf_load();
+    for (i = 0; i < n; i++)
+        pf_mem[off + i] &= ((const uint8_t *)buf)[i];
+    return pf_store();
 }
 
 static void audio_cb(void *u, Uint8 *stream, int len)

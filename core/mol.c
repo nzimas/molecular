@@ -38,8 +38,11 @@ typedef struct {
     gen_clock_t clock;           /* (0.55, so last: an older patch loads with none) */
     uint8_t motion_rate;         /* 0.58: MOTION's events a minute (0: an older patch, MOTION_RATE_DEFAULT) */
     uint8_t mix;                 /* 0.64: the atoms' share of the sound, % + 1 (0: an older patch, 50 %) */
-    uint8_t rsv[2];
+    uint8_t fx_morph;            /* build 75: the right button's new values reached over this many seconds (0: at
+                                  * once, as an older patch) */
+    uint8_t rsv;
 } mol_design_t;
+#define MOL_FX_MORPH_MAX 30u
 
 static mol_design_t mol_d;
 static gen_state_t mol_gs;
@@ -400,6 +403,16 @@ static void mol_off(void)
 /* sound allowed again after mol_off (powered on again); mol_new then starts it */
 static void mol_wake(void) { mol_want_off = 0; }
 static void mol_glides_reset(void);
+/* build 75, FX MORPH: the right button's new values, reached from where they are over the patch's seconds (main loop,
+ * mol_fx_tick): the values an LFO may move, and all of DELAY's and REVERB's, glide; a switch or a coarse step
+ * (FX_LFO_OK: it would jump at every step) changes halfway. A rewiring keeps them gliding, each with its atom
+ * (mol_fx_follow); a new molecule or a patch ends it */
+static struct {
+    uint8_t on;
+    uint32_t t0, ms;
+    int16_t from[MOL_NODES][4], to[MOL_NODES][4];
+} mol_fxg;
+static void mol_fx_follow(void);
 /* 1 once silent for good (after mol_off) */
 static int mol_poll(void)
 {
@@ -408,6 +421,7 @@ static int mol_poll(void)
         if (!ATOMIC_GET(mol_morph)) {
             mol_pending = 0;
             mol_shapes++;
+            mol_fx_follow();
         }
         return 0;
     }
@@ -417,15 +431,17 @@ static int mol_poll(void)
         return 1;
     if (!mol_pending)
         return 0;
+    mol_fxg.on = 0;                                  /* (the values gliding: a whole new molecule now) */
     if (mol_pending == 3u) {                  /* a patch loaded: the molecule as saved, started afresh */
         memcpy(&mol_d, &mol_next_design, sizeof mol_d);
         dl_init();
         rv_init();
     } else {
-        uint8_t rate = mol_d.motion_rate, mix = mol_d.mix;   /* (MOTION's rate and the mix carried on) */
+        uint8_t rate = mol_d.motion_rate, mix = mol_d.mix, morph = mol_d.fx_morph;   /* (the settings carried on) */
         mol_draw(&mol_d, mol_pending_seed);
         mol_d.motion_rate = rate;
         mol_d.mix = mix;
+        mol_d.fx_morph = morph;
         dl_init();
         rv_init();
     }
@@ -613,17 +629,76 @@ static int mol_prune(uint32_t k)
     return mol_morph_start();
 }
 
-/* the right button: every atom's values anew (kinds and places stay) */
-static void mol_shake_fx(uint32_t seed)
+/* the right button: every atom's values anew (kinds and places stay), at once or gliding there (FX MORPH) */
+static void mol_shake_fx(uint32_t seed, uint32_t now)
 {
     rnd_t r;
     uint32_t i;
     rnd_seed(&r, seed);
+    mol_fxg.on = 0;
     for (i = 1; i < mol_d.shape.n; i++) {
         mol_node_t tmp = mol_d.shape.node[i];
         fx_draw_values(&tmp, &r);
+        if (mol_d.fx_morph) {
+            memcpy(mol_fxg.from[i], mol_d.shape.node[i].p, sizeof tmp.p);
+            memcpy(mol_fxg.to[i], tmp.p, sizeof tmp.p);
+            continue;
+        }
         memcpy(mol_d.shape.node[i].p, tmp.p, sizeof tmp.p);
         fx_apply_heavy(&mol_d.shape.node[i]);
+    }
+    if (mol_d.fx_morph) {
+        mol_fxg.t0 = now;
+        mol_fxg.ms = mini(mol_d.fx_morph, MOL_FX_MORPH_MAX) * 1000u;
+        mol_fxg.on = 1;
+    }
+}
+/* .. the glide, a step (main loop, every tick) */
+static void mol_fx_tick(uint32_t now)
+{
+    uint32_t e, i, k;
+    if (!mol_fxg.on || mol_pending)
+        return;
+    e = now - mol_fxg.t0;
+    if (e >= mol_fxg.ms) {
+        e = mol_fxg.ms;
+        mol_fxg.on = 0;
+    }
+    for (i = 1; i < mol_d.shape.n; i++) {
+        mol_node_t *a = &mol_d.shape.node[i];
+        uint32_t ok = fx_heavy(a->kind) ? 0xFu : FX_LFO_OK[a->kind], changed = 0;
+        for (k = 0; k < 4u; k++) {
+            int32_t f = mol_fxg.from[i][k], t = mol_fxg.to[i][k];
+            int16_t v = (int16_t)((ok >> k & 1u) ? f + (t - f) * (int32_t)e / (int32_t)mol_fxg.ms
+                                                 : (2u * e >= mol_fxg.ms ? t : f));
+            if (a->p[k] != v) {
+                a->p[k] = v;
+                changed = 1;
+            }
+        }
+        if (changed)
+            fx_apply_heavy(a);
+    }
+}
+/* .. a rewiring or MOTION's growing or pruning taken (mol_next_map: the atom each node was): each glide goes on with
+ * its atom; a grown atom stays as it is */
+static void mol_fx_follow(void)
+{
+    int16_t from[MOL_NODES][4], to[MOL_NODES][4];
+    uint32_t i;
+    if (!mol_fxg.on)
+        return;
+    memcpy(from, mol_fxg.from, sizeof from);
+    memcpy(to, mol_fxg.to, sizeof to);
+    for (i = 1; i < mol_d.shape.n; i++) {
+        uint32_t o = mol_next_map[i];
+        if (o != 0xFFu && o < MOL_NODES) {
+            memcpy(mol_fxg.from[i], from[o], sizeof from[o]);
+            memcpy(mol_fxg.to[i], to[o], sizeof to[o]);
+        } else {
+            memcpy(mol_fxg.from[i], mol_d.shape.node[i].p, sizeof from[i]);
+            memcpy(mol_fxg.to[i], mol_d.shape.node[i].p, sizeof to[i]);
+        }
     }
 }
 /* a patch: this molecule (as saved, mol_d's whole design) through a fade, started afresh. 0: busy */

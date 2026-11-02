@@ -31,16 +31,17 @@ static void audio_block(int16_t *lr) { mol_block(lr); }
 static uint32_t cpu_psw, cpu_zol, cpu_zol_aen;      /* build 74: what __cpu_init found (trace.h) */
 static uint32_t crash[4], crash_seen;                /* build 65: the last start's crash, if any (trace.h) */
 
-/* the patches (core/patch.c): a flash sector a slot */
-static int plat_patch_read(uint32_t slot, void *buf, uint32_t n)
+/* the patches (core/patch.c): its 64 KB at HAL_PATCH_BASE; the ring topped up before each read (the slots' screen
+ * reads all 100) */
+static int plat_flash_read(uint32_t off, void *buf, uint32_t n)
 {
-    return slot < HAL_PATCH_SLOTS ? hal_flash_read(HAL_PATCH_BASE + slot * 4096u, buf, n) : -1;
+    hal_render();
+    return off < HAL_PATCH_BYTES && n <= HAL_PATCH_BYTES - off ? hal_flash_read(HAL_PATCH_BASE + off, buf, n) : -1;
 }
-static int plat_patch_write(uint32_t slot, const void *buf, uint32_t n)
+static int plat_flash_erase(uint32_t off) { return hal_flash_erase(HAL_PATCH_BASE + off); }
+static int plat_flash_program(uint32_t off, const void *buf, uint32_t n)
 {
-    int r = slot < HAL_PATCH_SLOTS ? hal_flash_write(HAL_PATCH_BASE + slot * 4096u, buf, n) : -1;
-    usb_logn(r ? "patch write failed" : "patch written", slot + 1u);
-    return r;
+    return hal_flash_program(HAL_PATCH_BASE + off, buf, n);
 }
 
 static uint32_t bits(uint32_t m)
@@ -86,7 +87,7 @@ int main(void)
     }
     GIE_ENABLE();
     usb_start();
-    usb_log("Molecular build 74");
+    usb_log("Molecular build 75");
     usb_logn("keys held", held);
     usb_logn("watchdog reset", (uint32_t)wd);
     if (TRACE[2] == 0xE0u && TRACE[0] == TRACE_MAGIC) { /* build 65: the run before crashed: what and where, kept for
@@ -110,6 +111,8 @@ int main(void)
     }
     hal_stage(0xC1);
     hal_audio(audio_block);
+    if (patch_recover())                             /* build 75: a save the power cut short, finished */
+        usb_log("patch save finished");
     hal_stage(13);
     app_draw(hal_ms());
     hal_stage(0xD1);

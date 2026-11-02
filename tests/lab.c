@@ -26,8 +26,9 @@
 #include <math.h>
 #include "../core/molecular.c"
 
-static int plat_patch_read(uint32_t slot, void *buf, uint32_t n) { return -1; }
-static int plat_patch_write(uint32_t slot, const void *buf, uint32_t n) { return -1; }
+static int plat_flash_read(uint32_t off, void *buf, uint32_t n) { return -1; }
+static int plat_flash_erase(uint32_t off) { return -1; }
+static int plat_flash_program(uint32_t off, const void *buf, uint32_t n) { return -1; }
 
 #define SECS 6
 #define NS (FS * SECS)

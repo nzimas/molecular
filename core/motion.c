@@ -134,6 +134,13 @@ static void motion_start(uint32_t seed, uint32_t now)
         mot.size[i] = 0;                             /* (nothing in common: the molecule taken whole) */
     mot_follow();
 }
+/* the values gliding stop where they are (the right button's new values take over) */
+static void motion_hold_values(void)
+{
+    uint32_t i;
+    for (i = 0; i < MOL_NODES; i++)
+        mot.vdur[i] = 0;
+}
 static void motion_stop(void)
 {
     uint32_t i;
@@ -150,6 +157,8 @@ static void mot_redraw(uint32_t now)
 {
     uint32_t cand[MOL_NODES], nc = 0, i, k, ok;
     mol_node_t tmp;
+    if (mol_fxg.on)                                  /* (build 75: FX MORPH's glide has them all) */
+        return;
     for (i = 1; i < mol_d.shape.n; i++)
         if (FX_LFO_OK[mol_d.shape.node[i].kind])
             cand[nc++] = i;

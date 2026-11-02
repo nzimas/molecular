@@ -1,5 +1,5 @@
 <h1>Manual</h1>
-<p class="lead">Molecular build 74 for the Sonicake Pocket Master.</p>
+<p class="lead">Molecular build 75 for the Sonicake Pocket Master.</p>
 <nav class="toc" aria-label="Contents">
   <a href="#controls">The controls</a>
   <a href="#power">Powering on and off</a>
@@ -54,7 +54,8 @@
   <li><b>Encoder press:</b> a whole new molecule, generator and atoms, through a short fade.</li>
   <li><b>Left button:</b> the same atoms, with their values and LFOs, bonded anew (REWIRE). Some molecules can be
     bonded only one way, and say NO REWIRE. The sound crossfades to the new bonds.</li>
-  <li><b>Right button:</b> every atom's values drawn anew (FX). The kinds and the bonds stay.</li>
+  <li><b>Right button:</b> every atom's values drawn anew (FX). The kinds and the bonds stay. With FX MORPH set
+    (SETTINGS), the values glide to the new ones over that many seconds instead of changing at once.</li>
   <li><b>Left button held:</b> new LFOs for the generator's four macros and for one value of each atom (LFO).</li>
 </ul>
 <div class="screens">
@@ -189,7 +190,9 @@
 
 <h2 id="menu">The menu</h2>
 <p>Hold the encoder on the molecule. One item at a time, its colour round the screen: <b>SETTINGS</b>,
-  <b>PATCHES</b>, <b>POWER</b>. Turn for the next, press to choose, hold to go back. The molecule goes on sounding.</p>
+  <b>PATCHES</b>, <b>POWER</b>. Turn for the next, press to choose, hold to go back. The molecule goes on sounding.
+  The menu opens on the item you last went into, so after using PATCHES once, hold and press takes you straight
+  back to the slots.</p>
 <div class="screens">
   <figure><img src="assets/screens/09_menu_settings.png" alt="The menu at SETTINGS" width="640" height="512"><figcaption>The menu, at SETTINGS.</figcaption></figure>
 </div>
@@ -202,24 +205,32 @@
   <li><b>MOTION RATE</b>: motion's events a minute, 6, 10, 15, 20, 30, 45, 67, 90 or 120 (20 to begin with).</li>
   <li><b>MIX</b>: how much of the sound is the effects, 0 to 100 % in steps of 5 (50 to begin with). At 0 only the
     generator is heard; at 100 only the atoms.</li>
+  <li><b>FX MORPH</b>: how long the right button's new values take to arrive, 0 to 30 seconds, one second a step (0
+    to begin with: at once). Values that move smoothly, such as a filter's frequency, glide all the way; switches,
+    such as a filter's type, change halfway through. A new molecule or a loaded patch ends a glide.</li>
 </ul>
 <div class="screens">
   <figure><img src="assets/screens/09a_settings_20.png" alt="MOTION RATE 20 a minute" width="640" height="512"><figcaption>MOTION RATE.</figcaption></figure>
   <figure><img src="assets/screens/09a4_settings_mix.png" alt="MIX 50 percent wet" width="640" height="512"><figcaption>MIX.</figcaption></figure>
+  <figure><img src="assets/screens/09a7_settings_morph_30.png" alt="FX MORPH 30 seconds" width="640" height="512"><figcaption>FX MORPH.</figcaption></figure>
 </div>
 
 <h3 id="patches">Patches</h3>
-<p>Twelve numbered slots, four a row. An empty slot is outlined; a filled one is solid white; the chosen one is
-  ringed in yellow. Turn to choose a slot.</p>
+<p>A hundred slots, numbered 0 to 99, four a row, three rows on the screen; turning past the bottom row scrolls on.
+  An empty slot is outlined; a filled one is solid white; the chosen one is ringed in yellow. Turn to choose a slot.
+  The slots open on the one you chose last.</p>
 <ul>
-  <li><b>Press:</b> loads the slot's patch (LOADED 6). An empty slot says EMPTY 6, and the slots stay open.</li>
+  <li><b>Press:</b> loads the slot's patch (LOADED 5). An empty slot says EMPTY 5, and the slots stay open.</li>
   <li><b>Hold:</b> saves the molecule there as it sounds now: its shape, its atoms' values and LFOs, the
-    generator's patch, chord and clock, and its motion rate (SAVED 6). A filled slot is written over.</li>
+    generator's patch, chord and clock, and its settings (SAVED 5). A filled slot is written over.</li>
   <li><b>A side button:</b> back to the molecule.</li>
 </ul>
-<p>Patches are kept in the pedal's flash and survive switching off and installing a newer Molecular.</p>
+<p>Patches are kept in the pedal's flash and survive switching off and installing a newer Molecular. The twelve
+  slots of build 74 and earlier are now slots 0 to 11, with their patches in them. A save cut short by the power is
+  completed the next time the pedal starts, and never harms the other slots.</p>
 <div class="screens">
-  <figure><img src="assets/screens/09f_slots_one_filled.png" alt="The patch slots, one filled" width="640" height="512"><figcaption>PATCHES, slot 6 filled.</figcaption></figure>
+  <figure><img src="assets/screens/09f_slots_one_filled.png" alt="The patch slots, one filled" width="640" height="512"><figcaption>PATCHES, slot 5 filled.</figcaption></figure>
+  <figure><img src="assets/screens/09h_slots_42.png" alt="The patch slots scrolled to slot 42" width="640" height="512"><figcaption>Scrolled on, at slot 42.</figcaption></figure>
 </div>
 
 <h3 id="poweroff">Power</h3>
@@ -233,8 +244,8 @@
   <tr><td>FX</td><td>The right button: every atom's values drawn anew</td></tr>
   <tr><td>LFO</td><td>The left button held: new LFOs</td></tr>
   <tr><td>MOTION / STILL</td><td>The right button held: motion on, motion off</td></tr>
-  <tr><td>LOADED 6 / EMPTY 6</td><td>A slot loaded, or nothing there</td></tr>
-  <tr><td>SAVED 6 / FAILED 6</td><td>The molecule saved to a slot, or the save did not verify</td></tr>
+  <tr><td>LOADED 5 / EMPTY 5</td><td>A slot loaded, or nothing there</td></tr>
+  <tr><td>SAVED 5 / FAILED 5</td><td>The molecule saved to a slot, or the save did not verify</td></tr>
 </table>
 
 <h2 id="update">Update mode</h2>
